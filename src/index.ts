@@ -25,6 +25,8 @@ async function main() {
   };
   const report = await cleanup(new GitHubApi(token, config.repository), config);
   await core.summary.addRaw(summary(report, config)).write();
+  // A single JSON line preserves the same trace in authenticated job logs.
+  core.info(`Stack cleanup report: ${JSON.stringify(report)}`);
   const missing = report.policies.filter(p => p.policy === 'missing');
   if (config.warnMissing && missing.length) core.warning(`Missing ALLOW_STACK_CLEANUP (preserved): ${missing.map(p => p.workflow.path).join(', ')}`);
   for (const declaration of report.policies.filter(p => p.policy === 'invalid')) core.warning(`${declaration.workflow.path}: ${declaration.detail}`);

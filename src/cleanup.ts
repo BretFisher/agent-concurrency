@@ -45,7 +45,7 @@ export async function cleanup(api: Api, config: Config, wait: (ms: number) => Pr
     for (const workflow of await api.workflows()) {
       if (workflow.state !== 'active' || workflow.id === current.workflow_id) continue;
       if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(workflow.path)) {
-        report.policies.push({workflow, policy: 'invalid', detail: 'Unsupported workflow path; preserved.'}); continue;
+        report.policies.push({workflow, policy: 'no', detail: 'GitHub-managed or unsupported workflow path; excluded.'}); continue;
       }
       try {
         await inspectWorkflow(api, config, report, stack, top, workflow, cutoff, wait, now);
