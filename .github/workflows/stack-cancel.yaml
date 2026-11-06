@@ -3,7 +3,8 @@ on:
   push:
     branches: ['stack-lab/**']
   pull_request:
-    types: [opened, synchronize, reopened]
+    # stacked is supported live, although older actionlint schemas reject it.
+    types: [opened, synchronize, reopened, stacked]
   workflow_dispatch:
 permissions: {}
 # cancel any previously-started, yet still active runs of this workflow on the same branch

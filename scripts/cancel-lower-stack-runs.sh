@@ -73,6 +73,7 @@ while IFS= read -r candidate; do
   id=$(jq -r '.run.id' <<< "$candidate")
   lower_pr=$(jq -r '.pr' <<< "$candidate")
   candidate_sha=$(jq -r '.run.head_sha' <<< "$candidate")
+  candidate_attempt=$(jq -r '.run.run_attempt // 1' <<< "$candidate")
   # PR runs have an explicit association. Push runs need commit/PR evidence.
   if [[ $(jq '.run.pull_requests | length' <<< "$candidate") != 0 ]]; then
     jq -e --argjson pr "$lower_pr" 'any(.run.pull_requests[]; .number == $pr)' <<< "$candidate" > /dev/null || continue
@@ -89,29 +90,35 @@ while IFS= read -r candidate; do
   fi
   api "$root/actions/runs/$id" > "$tmp/victim.json"
   jq -e --argjson workflow "$workflow" --argjson n "$run_number" \
-    --argjson repo "$repo_id" --arg sha "$candidate_sha" --arg events "$events" '
+    --argjson repo "$repo_id" --argjson attempt "$candidate_attempt" --arg sha "$candidate_sha" --arg events "$events" '
     .workflow_id == $workflow and .run_number < $n and .status != "completed" and
-    .head_repository.id == $repo and .head_sha == $sha and
+    .head_repository.id == $repo and .head_sha == $sha and (.run_attempt // 1) == $attempt and
     (.event as $e | $events | split(",") | index($e))' "$tmp/victim.json" > /dev/null || continue
   if [[ "$dry_run" == true ]]; then
     note "Would cancel run $id on lower PR #$lower_pr in stack #$stack."
     continue
   fi
   if ! api --method POST "$root/actions/runs/$id/cancel" > /dev/null; then
+    # Another top-PR run can finish cancellation between the read and request.
+    api "$root/actions/runs/$id" > "$tmp/result.json"
+    if jq -e '.status == "completed"' "$tmp/result.json" > /dev/null; then
+      note "Run $id already finished with conclusion $(jq -r '.conclusion' "$tmp/result.json")."
+      continue
+    fi
     note "Cancellation request failed for run $id."
     failed=1
     continue
   fi
   note "Requested cancellation of run $id on lower PR #$lower_pr in stack #$stack."
   confirmed=false
-  for ((attempt = 0; attempt < 5; attempt++)); do
+  for ((attempt = 0; attempt < 20; attempt++)); do
     api "$root/actions/runs/$id" > "$tmp/result.json"
     if jq -e '.status == "completed"' "$tmp/result.json" > /dev/null; then
       note "Run $id finished with conclusion $(jq -r '.conclusion' "$tmp/result.json")."
       confirmed=true
       break
     fi
-    sleep 2
+    sleep 3
   done
   if [[ "$confirmed" == false ]]; then
     note "Run $id has not finished yet; cancellation is unconfirmed."

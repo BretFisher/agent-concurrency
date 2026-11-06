@@ -90,6 +90,12 @@ class ScopeTests(unittest.TestCase):
     def test_other_repository_is_preserved(self):
         f=fixture();f['responses']['repos/o/r/actions/runs/10']['head_repository']={'id':2}
         _,s=self.execute(f);self.assertEqual(s['cancelled'],[])
+    def test_other_workflow_is_preserved(self):
+        f=fixture();f['responses']['repos/o/r/actions/runs/10']['workflow_id']=99
+        _,s=self.execute(f);self.assertEqual(s['cancelled'],[])
+    def test_api_read_failure_stops_before_writes(self):
+        f=fixture();del f['responses']['repos/o/r/compare/sha1...sha3']
+        r,s=self.execute(f);self.assertNotEqual(r.returncode,0);self.assertEqual(s['cancelled'],[])
     def test_unrelated_pr_is_preserved(self):
         f=fixture();f['responses']['repos/o/r/actions/runs/10']['pull_requests']=[{'number':99}]
         _,s=self.execute(f);self.assertEqual(s['cancelled'],[])
