@@ -74,9 +74,23 @@ Before the automatic demos, run `make automatic-mode`. After all demos, run `mak
 
 [Observed run evidence](docs/evidence.md) records what was actually tested. Reproduction steps describe expected behavior until supported by that evidence.
 
+## Approach 3: enforce full-stack E2E with a required deployment
+
+A required deployment can cover lower layers in a linear native stack. This differs from ordinary required status checks. The [setup and walkthrough](docs/required-deployment.md) explains the environment, active ruleset, exact-SHA deployment API, read-only tests, and trusted reporting boundary. [Live evidence](docs/deployment-evidence.md) records what was actually observed.
+
+```sh
+make deployment-setup                # admin: create environment and active ruleset
+make deployment-request PR=TOP_PR    # request the current exact top SHA
+make deployment-state
+make deployment-status DEPLOYMENT=ID
+make stack-merge STACK=STACK_NUMBER
+```
+
+Deployment mode runs real cheap checks on every PR. Expensive HTTP E2E runs once on explicit request. The deployment is simulated on an ephemeral runner; the HTTP assertions are real. A separate API-only workflow posts success after the E2E source workflow has completed successfully and the stack still matches. Failed or canceled tests cannot report a successful deployment. Keep the rule active for the merge proof.
+
 ## Merge protection and security
 
-This repo does not claim protected stack-only merging. GitHub evaluates required checks for every layer. A job skipped by an `if` condition can report success without testing that layer. A canceled check can prevent a layer from merging. The live [required-check experiment](docs/evidence.md#required-check-experiment) confirmed that a passing tip did not satisfy the required unit/build check for lower layers. Do not mark a skipped top-only job as the sole safety check, copy green statuses to lower commits, or assume a dispatched workflow satisfies PR required checks. Retain real cheap per-layer checks when enabling protections. Merge queue runs need their own `merge_group` workflow and concurrency scope; a queue does not promise one build per stack. Merge queues are outside this demo.
+The earlier status-check example does not enforce stack-wide E2E. The required-deployment example above adds a separate enforcement rule. GitHub evaluates required checks for every layer. A job skipped by an `if` condition can report success without testing that layer. A canceled check can prevent a layer from merging. The live [required-check experiment](docs/evidence.md#required-check-experiment) confirmed that a passing tip did not satisfy the required unit/build check for lower layers. Do not mark a skipped top-only job as the sole safety check, copy green statuses to lower commits, or assume a dispatched workflow satisfies PR required checks. Retain real cheap per-layer checks when enabling protections. Merge queue runs need their own `merge_group` workflow and concurrency scope; a queue does not promise one build per stack. Merge queues are outside this demo.
 
 Workflows start with no permissions. API validation gets PR read permission; test jobs get contents read permission. Test code has no write token. Checkout does not retain credentials. External actions are pinned to release SHAs at least seven days old. Review and update pins regularly. `.poutine.yml` records one scoped exception: the test workflow intentionally executes PR code with read-only access and no secrets. Go caching is disabled because there are no dependencies or `go.sum`; this avoids a cache setup cost in a small example. Job time limits bound failures and the simulated wait. Multi-line shell steps stop on errors and unset values.
 

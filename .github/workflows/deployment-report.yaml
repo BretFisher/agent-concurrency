@@ -1,0 +1,73 @@
+name: Deployment Result
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [Deployment E2E]
+    types: [completed]
+permissions: {}
+concurrency:
+  group: deployment-report-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+jobs:
+  report:
+    name: Report Completed E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      deployments: write
+    steps:
+      # Privileged workflow_run is API-only: no checkout, artifacts, PR code, or secrets.
+      # Read immutable source conclusion before posting any successful deployment.
+      - name: Verify Source And Current Stack
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const id = context.payload.workflow_run.id;
+            const {data: source} = await github.rest.actions.getWorkflowRun({...context.repo, run_id:id});
+            const {data: workflow} = await github.rest.actions.getWorkflow({...context.repo, workflow_id:'deployment-e2e.yaml'});
+            if (source.workflow_id !== workflow.id || source.event !== 'workflow_dispatch' || source.head_branch !== 'main' || source.status !== 'completed' || source.repository.full_name !== `${context.repo.owner}/${context.repo.repo}`) throw new Error('Unexpected source workflow.');
+            const deployments = await github.paginate(github.rest.repos.listDeployments, {...context.repo, environment:'stack-e2e', per_page:100});
+            const matches = deployments.filter(d => d.payload.run_id === id && d.payload.run_attempt === source.run_attempt && d.creator.login === 'github-actions[bot]');
+            if (matches.length === 0) { core.info('No deployment was opened; nothing to report.'); return; }
+            if (matches.length !== 1) throw new Error('Expected one deployment for this run attempt.');
+            const deployment = matches[0];
+            let state = 'failure';
+            let reason = `Source E2E workflow concluded ${source.conclusion}`;
+            try {
+              if (source.conclusion !== 'success') throw new Error(reason);
+              if (context.ref !== 'refs/heads/main') throw new Error('Dispatch this trusted workflow from main only.');
+              const number = Number(deployment.payload.pr);
+              const expected = deployment.sha;
+              if (!Number.isSafeInteger(number) || number < 1 || !/^[0-9a-f]{40}$/.test(expected)) throw new Error('Use a PR number and full SHA.');
+              const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: number});
+              if (pr.state !== 'open' || pr.head.sha !== expected || pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) throw new Error('PR is closed, foreign, or has a different head.');
+              const s = pr.stack;
+              if (s && s.position !== s.size) throw new Error('Only the current stack tip can deploy.');
+              const base = s ? s.base : pr.base;
+              if (base.ref !== 'main') throw new Error('This teaching gate targets main.');
+              let members = [{number, sha: pr.head.sha}];
+              if (s) {
+                const {data: stack} = await github.request('GET /repos/{owner}/{repo}/stacks/{stack_number}', {...context.repo, stack_number: s.number});
+                members = stack.pull_requests.filter(p => p.state === 'open').map(p => ({number:p.number, sha:p.head.sha}));
+                if (members.length !== s.size || members.at(-1)?.number !== number) throw new Error('Membership changed while reading the stack.');
+              }
+              let parent = base.sha;
+              for (const member of members) {
+                const {data: diff} = await github.rest.repos.compareCommitsWithBasehead({...context.repo, basehead:`${parent}...${member.sha}`});
+                if (!['ahead','identical'].includes(diff.status)) throw new Error('Rebase the stack to a linear history before deploying.');
+                parent = member.sha;
+              }
+              const snapshot = {pr:number, head:expected, base:base.sha, stack:s ? s.number : null, members};
+              const recorded = {pr:deployment.payload.pr, head:deployment.payload.head, base:deployment.payload.base, stack:deployment.payload.stack, members:deployment.payload.members};
+              if (JSON.stringify(snapshot) !== JSON.stringify(recorded)) throw new Error('Stack heads or base changed during testing.');
+              state = 'success';
+              reason = 'HTTP E2E passed for the unchanged current tip and full stack.';
+            } catch (error) {
+              reason = error.message;
+            }
+            await github.rest.repos.createDeploymentStatus({...context.repo, deployment_id:deployment.id, state, log_url:source.html_url, auto_inactive:false, description:reason.slice(0,140)});
+            core.info(JSON.stringify({deployment_id:deployment.id, sha:deployment.sha, state, reason}));
+            await core.summary.addHeading('Deployment result').addCodeBlock(JSON.stringify({deployment_id:deployment.id, sha:deployment.sha, state, reason}, null, 2)).write();
+            if (state !== 'success') core.setFailed(reason);
