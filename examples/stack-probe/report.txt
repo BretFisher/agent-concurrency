@@ -1,0 +1,1 @@
+The report checks the contract, handler, and assertion layers together.
