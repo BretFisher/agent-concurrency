@@ -3,7 +3,7 @@ on:
   push:
     branches: ['stack-lab/**']
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, stacked]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 permissions: {}
 # cancel any previously-started, yet still active runs of this workflow on the same branch
@@ -39,7 +39,7 @@ jobs:
           github.event.pull_request.stack == null ||
           github.event.pull_request.stack.position == github.event.pull_request.stack.size }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     permissions: {}
     steps:
       - name: Simulate Active Validation

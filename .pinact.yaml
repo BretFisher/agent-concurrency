@@ -1,0 +1,9 @@
+version: 3
+# This repository's prerelease action has no release tag. Scope the exception
+# to its reviewed and tested commit; a different ref must be reviewed.
+rules:
+  - ignore: true
+    conditions:
+      - expr: >-
+          ActionName == "BretFisher/agent-concurrency" &&
+          ActionVersion == "f378d9cfb1bc37cf8a107151ecd35e3d34cbd8f9"

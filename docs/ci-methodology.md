@@ -1,8 +1,8 @@
-# CI concurrency implementation guide
+# Job pruning in stacks: implementation guide
 
-This guide separates three tested mechanisms. [Stack workflow test findings](stack-tests.md) contains the exact live evidence. [The source study](ci-source-study.md) explains the earlier implementation comparisons.
+This guide describes three independent prune options for job pruning in stacks. Each option has a different implementation and effect. You can use one or combine them; the numbers do not specify rank, difficulty, or an adoption sequence. The TypeScript Prune Option 3 replaces the earlier same-workflow Bash experiment. [Stack workflow test findings](stack-tests.md) contains the exact live evidence. [The source study](ci-source-study.md) explains the earlier implementation comparisons.
 
-## Level 1: new commits within one branch or PR
+## Prune Option 1: new commits within one branch or PR
 
 Purpose: cancel any previously-started, yet still active runs of this workflow on the same branch.
 
@@ -15,17 +15,9 @@ concurrency:
 
 The key stays stable across revisions. Ordinary PR events use a PR merge ref; pushes and dispatches use a branch or tag ref. Different workflows keep different keys. A SHA in the key would prevent supersession. Scheduling order is not an authoritative current-head check. [GitHub concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-## Level 2: prevent jobs on known lower PRs
+## Prune Option 2: prevent jobs on known lower PRs
 
-Use the [Stack If Probe](../.github/workflows/stack-if-probe.yaml) pattern. Keep your existing trigger types and add `stacked`. Without explicit types, GitHub's default PR activities omit it.
-
-```yaml
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, stacked]
-```
-
-On each selected job, combine existing conditions with:
+Use only the job condition from [Stack If Probe](../.github/workflows/stack-if-probe.yaml). Keep the workflow's existing triggers. Combine this condition with an existing job condition using `&&` rather than replacing the existing condition.
 
 ```yaml
 if: >-
@@ -34,61 +26,64 @@ if: >-
       github.event.pull_request.stack.position == github.event.pull_request.stack.size }}
 ```
 
-An ordinary PR or top PR runs. A known lower PR skips. Non-PR events run. There is no workflow-level `if:`; a condition on a reusable-workflow caller job can cover all its called jobs. A skipped check is not evidence that validation ran.
+An ordinary PR or top PR runs. A known lower PR skips. Runs without PR stack metadata continue normally. There is no workflow-level `if:`; a condition on a reusable-workflow caller job can cover all its called jobs. This filter adds no workflow runs, jobs, API calls, or write permissions. A skipped check is not evidence that validation ran.
 
-The CLI pushes branches, creates PRs, then links the native stack. Opening events can therefore omit membership. `github.event` remains the original event data even if a job waits for a runner. An API lookup can already see membership while that event still has `stack: null`.
+The CLI pushes branches, creates PRs, then links the native stack. Opening runs can therefore occur before the PR is a member of a stack. The attached metadata does not refresh when the job starts, so Prune Option 2 does not reliably prevent initial opening jobs. Later PR updates after linking can include the PR’s stack position and allow the filter to skip lower-PR jobs. The [runner-start timing check](stack-tests.md#runner-start-timing-check) verified that the opening event still lacked stack data even though the stack existed before both jobs started.
 
-A `stacked` event creates another run after membership exists. With Level 1, it can supersede the earlier opening run on the same PR ref. The lower replacement skips validation. The top replacement runs. This works for PR runs; initial push runs use different refs and need Level 3 if they should stop. A former-top PR run can also continue after extension if that PR gets no replacement event of its own.
+A job that started while its PR was top is not re-evaluated when a new PR joins above it. The condition makes no cancellation requests and does not inspect current stack state through the API. The [findings](stack-tests.md) retain the earlier trigger experiments separately from this condition-only adoption advice.
 
-I verified `pull_request: stacked` directly in GitHub Actions for both initial creation and extension. The generic Actions reference and installed actionlint schema omitted this activity, but live delivery succeeded. The dedicated [event probe](../.github/workflows/stack-event-probe.yaml) records the evidence. GitHub separately documents the webhook activity in its [stack rollout guide](https://docs.github.com/en/pull-requests/tutorials/roll-out-stacked-prs#5-update-your-programmatic-tooling).
+## Prune Option 3: stacked-only prune workflow
 
-## Level 3: cancel earlier runs on lower PRs
+Use the [copyable Prune Option 3 workflow](../README.md#prune-option-3-cancel-active-workflow-runs-on-lower-prs-of-a-stack). It has one job and one step calling the bundled TypeScript action. It listens only for `pull_request` with `types: [stacked]`. Existing work workflows keep their triggers and jobs. The action does not invoke them or copy their results.
 
-The implemented contract is narrow:
+### Discover workflows by opt-in
 
-1. The current run's event is allowed. Defaults are `pull_request,push`.
-2. Its exact source repository, branch, and head identify one current open PR.
-3. That PR is currently the native stack's top PR.
-4. The top contains every current lower head.
-5. Cancel earlier, still-active runs of this same workflow on verified lower member PRs, restricted to allowed candidate events.
+Read active workflow IDs and paths through the API. Resolve the default branch to one commit, then parse workflow files at that commit. Only the literal workflow-level `env.ALLOW_STACK_WORKFLOW_PRUNE: "yes"` allows selection. `"no"` and an absent declaration preserve the workflow. Job-level declarations, expressions, booleans, malformed YAML, and ambiguous duplicate keys cannot opt in a workflow.
 
-Otherwise, make no cancellation requests. The script has no validation-skip output. Its job is independent of all validation jobs.
+An explicit `policy-ref` input can select a full trusted commit SHA for an isolated test. Mutable branch overrides are rejected. The normal example omits this input and reads the default branch. A new declaration must reach that branch before normal pruning can use it. A workflow file absent from that revision is treated as a missing opt-in, not as an error. The action also requires the top and candidate workflow file contents to match the trusted definition. A workflow changed in an unmerged PR is preserved, because its jobs may have changed.
 
-Copy the `cancel` job from [Stack Cancel Demo](../.github/workflows/stack-cancel.yaml), with the [Bash script](../scripts/cancel-lower-stack-runs.sh) on your trusted default branch. The demonstration includes a repository-variable enable switch. Change the workflow job's event condition and `STACK_CANCEL_EVENTS` together if you need a different event policy. Changing allowed events does not add workflow triggers by itself.
+The action requires no central workflow list. `warn-on-missing-opt-in: "yes"` adds missing declarations to the summary and emits a grouped warning. It defaults to `"no"`. There is no required declaration check and no need to edit excluded workflows. Invalid declarations are reported and preserved. GitHub-managed dynamic workflows are excluded.
 
-The useful job `if:` filters events. Stack membership and top position are checked through the API inside the step. Do not require event stack metadata here: that would miss the opening-event transition the API check is intended to handle.
+### Select current stack work
 
-The script uses the current run's numeric workflow ID. It paginates that workflow's history and treats run number only as evidence of earlier creation. It does not select the current top by timestamps. PR candidates need matching member and repository association. Push candidates also need commit-to-PR association. Missing or ambiguous identity remains untouched.
+1. Accept only a `pull_request.stacked` invocation from the same repository.
+2. Read the joining PR and its current stack through the API. Confirm a consistent ordered set of open same-repository PRs and its current top.
+3. Verify that the top contains every current lower head through the compare API.
+4. For each opted-in workflow, paginate its run history and find a run for the top PR's exact current head, branch, and repository. Its source event must be `pull_request` or `push`. It must be active or have completed successfully. A push needs commit-to-PR association when no explicit PR association is present.
+5. If the top run is not visible, repeat the scan twice, two seconds apart. If no suitable run appears, preserve lower work and report the skip.
+6. Select active lower-PR runs of this same target workflow, with allowed source events and verified PR association. Only runs created strictly before the prune run's API creation timestamp are eligible. Equal timestamps and later runs are preserved. Run numbers from different workflows are never compared.
+7. Re-read stack state, replacement run, candidate identity and attempt before cancellation. Preserve changed attempts and stop further requests if the stack changes.
 
-It rechecks membership and member heads before each request, refreshes the candidate's state and attempt, and handles a run that finishes during cancellation. A changed stack stops further requests. API errors fail the cleanup job instead of silently claiming cancellation.
+The prune invocation can come from any joining PR. It reads the current top rather than assuming the joining PR is still top. Concurrency serializes pruning for each stack with `cancel-in-progress: false`. GitHub can replace a pending invocation; every active invocation reads current state. Repeated events are handled by state checks and cancellation-race handling.
 
-The cancellation API returns acceptance asynchronously. The script requests all selected cancellations before reporting current outcomes; it does not delay later requests while waiting for the first run. A successful job means requests were accepted. Pending outcomes are explicit. The live proof checks eventual run conclusions separately. No fixed cancellation-time guarantee is made.
+### Report cancellation accurately
 
-## Permissions and trusted code
+Collect job data for each selected run attempt. Request all cancellations before checking their outcomes. A successful request means acceptance, not a confirmed stop. The action reports accepted/pending, finished/cancelled, already finished, failed requests, interrupted validation, and dry-run proposals separately. API errors fail the prune job and remain in the summary.
 
-| Component | Permissions | Execution boundary |
-| --- | --- | --- |
-| Cancellation job | Actions write; contents read; PR read | One Bash step; no PR checkout or artifact execution |
-| Validation jobs | Only required read access | Run PR code on separate runners |
-| Event-only probe | PR read | Records metadata; performs no cancellation |
+The prune summary includes the joining PR, stack, trusted policy commit, affected workflow, lower PR, branch, commit, run and attempt, replacement top run, reason, request time, and linked observed job states. Completed jobs are not described as canceled. A confirmed canceled state does not by itself prove which concurrent actor caused it. A structured copy of the report is also written to the prune job log. The canceled run's own summary is not modified.
 
-The cancellation step resolves the default branch to a commit, fetches the script at that commit, then executes it. The workflow has `permissions: {}` at its top level. Permissions are scoped to the job; GitHub has no step-scoped permission grant. The demonstration's validation job has no `needs: cancel` relationship.
+### Permissions and trusted code
 
-The script requires Bash, gh, jq, diff, and core shell tools. The example uses a GitHub-hosted Ubuntu image with these tools. A custom runner must provide them. Do not fetch executable script content from the PR head for the write-capable job.
+The prune job has Actions write, contents read, and PR read permissions. Its workflow starts with `permissions: {}` and grants these permissions only to that job. It executes a SHA-pinned bundled action, with no PR checkout or artifact execution. Other workflows retain their permissions.
+
+TypeScript source is compiled and bundled before publication. The action's Node runtime executes the bundled JavaScript. Adoption requires no shell script download, gh, jq, compiler installation, or runtime package installation. Source, tests, the package lock, bundle, and dependency license notices are retained in the repository.
 
 ## Full-stack validation is required
 
 Existing and future diff-aware workflow specifications must cover the full net change from the stack's merge target to the top head. Use the current stack base SHA and sufficient history for `git diff BASE...HEAD`. A top PR's individual changed-files list can omit lower-layer files. Verify the effective diff behavior of any third-party lint or test action.
 
-Run validation against the complete top content. If a lower PR changed and the top has not been rebased, its content is incomplete; the Bash implementation leaves the lower work running. Its ancestry check is a cancellation safeguard, not proof that every selected validation category actually covers every file.
+Run validation against the complete top content. If a lower PR changed and the top has not been rebased, its content is incomplete; the TypeScript implementation leaves the lower work running. Its ancestry check is a cancellation safeguard, not proof that every selected validation category actually covers every file.
 
 ## Scope and limits
 
-- Manual `workflow_dispatch` runs neither initiate nor become targets of Level 3 by default. Level 1 has its own workflow/ref behavior and can still cancel a manual run sharing that key.
-- A manual rerun retains its original event type. Dispatch protection does not mean every manually requested rerun is excluded.
-- The implemented job targets its own workflow only. A dedicated cleanup-only workflow triggered by `stacked` would need explicit target workflow IDs and a creation-time boundary suitable for those different workflows. That variant is not implemented here.
-- There is no atomic transaction between reading stack state and requesting cancellation. A later lower-layer run can start after the scan and remain until another top invocation.
-- The proven `stacked` event supplies creation and extension signals. This test does not establish separate removal, reorder, dissolution, or rebase activity types.
-- These mechanisms control scheduling and cancellation. They do not implement whole-stack-only merging or transfer validation results to lower SHAs.
+- The trigger covers PRs joining a new or existing stack. It does not run for ordinary commits. Removal and reorder signals are not established by these tests.
+- A missing replacement after the bounded retry preserves lower work. This is not a continuous reconciliation service.
+- Cancellation targets whole workflow runs, including their jobs. Opt in only when top-PR jobs can replace the lower work.
+- Manual dispatches are not cancellation targets. A manual rerun keeps its original event type; it is not equivalent to a dispatch. Changed run attempts are preserved during a scan.
+- API reads and cancellation are not atomic. A stack or run can change after the last check; report the remaining race rather than claiming a transaction.
+- Cancellation is asynchronous; there is no fixed stop-time guarantee.
+- These mechanisms do not enforce whole-stack-only merging or transfer successful checks to other commits.
 
-The earlier proposal for repository-wide reconciliation, duplicate-result reuse, and merge enforcement is outside this implementation. This Bash script implements the smaller current-workflow contract above. Run `make stack-cancel-test` for its local scope checks; see the [README command table](../README.md#test-and-use-the-script) for live use.
+## Earlier Bash experiment
+
+The [Bash script](../scripts/cancel-lower-stack-runs.sh) and [Stack Cancel Demo](../.github/workflows/stack-cancel.yaml) retain the earlier same-workflow implementation and its tests. That job could complete before stack linking and miss initial creation. It is historical test code, not the revised Prune Option 3 adoption path. See [agent instructions](../AGENTS.md) for development and reproduction commands.

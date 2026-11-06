@@ -1,0 +1,24 @@
+name: Stack Prune
+description: Cancel opted-in lower-PR workflow runs after PRs join a native stack.
+inputs:
+  token:
+    description: Repository token with Actions write, contents read, and pull requests read.
+    required: true
+    default: ${{ github.token }}
+  dry-run:
+    description: Use yes to report proposals without requesting cancellation.
+    default: 'no'
+  warn-on-missing-opt-in:
+    description: Use yes to list missing workflow opt-ins in the summary and emit a warning.
+    default: 'no'
+  policy-ref:
+    description: Optional full trusted policy commit SHA; defaults to the repository default branch resolved once.
+    default: ''
+outputs:
+  accepted-count:
+    description: Number of cancellation requests accepted in this invocation.
+  pending-count:
+    description: Number of accepted requests whose final outcome is still pending.
+runs:
+  using: node24
+  main: dist/index.cjs

@@ -1,0 +1,25 @@
+name: Stack Prune
+on:
+  pull_request:
+    types: [stacked]
+permissions: {}
+# Keep the active prune job running; a pending invocation reads the latest stack.
+concurrency:
+  group: stack-prune-${{ github.event.pull_request.stack.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  prune:
+    name: Cancel Lower Stack Runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      # Execute a fixed action revision, with no checkout of PR code.
+      - name: Prune Stack Runs
+        uses: BretFisher/agent-concurrency@f378d9cfb1bc37cf8a107151ecd35e3d34cbd8f9
+        with:
+          token: ${{ github.token }}
+          warn-on-missing-opt-in: 'no'

@@ -3,8 +3,7 @@ on:
   push:
     branches: ['stack-lab/**']
   pull_request:
-    # stacked is supported live, although older actionlint schemas reject it.
-    types: [opened, synchronize, reopened, stacked]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 permissions: {}
 # cancel any previously-started, yet still active runs of this workflow on the same branch
@@ -17,7 +16,7 @@ jobs:
     # Fresh API checks in the script decide stack membership and top position.
     # Event metadata alone would miss PRs linked after their opening event.
     if: >-
-      ${{ vars.STACK_CLEANUP_ENABLED == 'true' &&
+      ${{ vars.STACK_PRUNE_ENABLED == 'true' &&
           contains(fromJSON('["pull_request","push"]'), github.event_name) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -41,7 +40,7 @@ jobs:
           bash "$RUNNER_TEMP/stack-cancel.sh"
   work:
     name: Simulated Validation
-    # No needs: cancel. Cleanup neither gates nor certifies validation.
+    # No needs: cancel. Prune neither gates nor certifies validation.
     runs-on: ubuntu-latest
     timeout-minutes: 4
     permissions: {}
