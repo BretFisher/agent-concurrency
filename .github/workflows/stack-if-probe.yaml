@@ -3,9 +3,11 @@ on:
   push:
     branches: ['stack-lab/**']
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, stacked]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 permissions: {}
+env:
+  ALLOW_STACK_CLEANUP: "yes"
 # cancel any previously-started, yet still active runs of this workflow on the same branch
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
