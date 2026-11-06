@@ -17,7 +17,7 @@ These are design goals. The comparison below separates tested behavior from prop
 | --- | --- | --- | --- | --- |
 | Native concurrency | Cancels older workflow runs or job runs within a stable group | Simple first step for ordinary PR updates; can stop many validation jobs together | Scheduling order is not current-commit order. A standalone-to-stack key change leaves earlier runs outside the new group. | Per-PR and selected stack-tip supersession tested live |
 | Current-state API cleanup | Queries current membership and heads, then cancels proven obsolete runs in selected workflows | Can cover lower layers, old commits, equivalent duplicates, and earlier standalone-key runs once membership is known | Needs explicit scope, pagination, fresh reads, retries, and a runner. Unknown membership must not cause guessed cancellations. | Proposed method; no cleanup engine implemented |
-| Required-deployment merge gate | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Negative cases and standalone merging tested; native stack inheritance not reproduced |
+| Retired required-deployment experiment | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Retired; negative cases and standalone merging tested, native stack inheritance not reproduced |
 
 Automatic and opt-in triggering are separate policy choices. Either can be combined with selection, cancellation, and merge controls.
 
@@ -79,9 +79,9 @@ GitHub [documents required-deployment inheritance](https://docs.github.com/en/pu
 - An exact top SHA passed E2E and had an active successful deployment, but the full native stack merge remained blocked by the lower layer.
 - Standalone PRs passed the same active gate and merged without bypass.
 
-The experiment keeps per-layer cheap checks to isolate deployment behavior. That configuration is not a general requirement for a future tip-only cost policy. A skipped job can report success without testing; copying successful statuses to lower commits would not establish validation.
+The experiment used per-layer cheap checks to isolate deployment behavior. That configuration is not a general requirement for a future tip-only cost policy. A skipped job can report success without testing; copying successful statuses to lower commits would not establish validation.
 
-Read the [deployment evidence](docs/deployment-evidence.md) and [detailed gate walkthrough](docs/required-deployment.md). The rule remains active. The two failed deployment-demo PRs are retained for inspection. This is not a proven stack-wide merge solution or proof that GitHub can never provide one.
+Read the [deployment evidence](docs/deployment-evidence.md) and [detailed gate walkthrough](docs/required-deployment.md). The experimental protection was removed after the failed inheritance proof. The environment, workflow files, and historical records remain for inspection. The two failed deployment-demo PRs are retained for inspection. This is not a proven stack-wide merge solution or proof that GitHub can never provide one.
 
 ## What the demo proves
 

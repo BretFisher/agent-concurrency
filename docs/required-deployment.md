@@ -1,4 +1,6 @@
-# Require full-stack E2E before merging
+# Retired required-deployment experiment
+
+**Retired experiment:** the active `Stack E2E gate` ruleset was removed after native stack inheritance was not reproduced. This page preserves the setup and architecture used in that experiment; it is not a recommended working stack-wide merge gate. Historical results, the environment, workflow files, and retained PRs remain available.
 
 A required deployment and a required status check are different GitHub rules. A required status check applies to each PR in a native stack. GitHub documents that a successful deployment for a stack PR also covers lower PRs while the stack has a linear history. This example tests that difference with the `stack-e2e` environment. **Live result: the expected lower-layer deployment inheritance was not reproduced.** Missing, failed, canceled, and stale evidence blocked merges correctly, but a successful active top deployment still did not permit the native stack merge. Read the evidence before using this as a stack optimization.
 
@@ -6,9 +8,9 @@ This is a **simulated deployment** to an ephemeral Actions runner. The existing 
 
 [Execution evidence](deployment-evidence.md) distinguishes observed results from documented expectations. Earlier [status-check and cancellation evidence](evidence.md) remains unchanged.
 
-## Set it up in GitHub
+## Archived setup in GitHub
 
-You need repository administrator access. No additional tools are installed by this repo.
+The following instructions describe the original experiment. The retained `deployment-setup` target would deliberately recreate the removed protection; it is not normal repository setup. Repository administrator access is needed to reproduce that configuration.
 
 1. Open the repository's **Settings → Environments**. Select **New environment**, enter `stack-e2e`, and save.
 2. For this demo, leave required reviewers and wait timers off. Add no secrets. These environment protection options control when an Actions job may enter an environment. They are separate from the branch merge requirement.
@@ -53,7 +55,7 @@ make deployment-status DEPLOYMENT=DEPLOYMENT_ID
 make stack-merge STACK=STACK_NUMBER
 ```
 
-The status target shows the deployment's status history. The deployment record's `sha` must equal the tested top SHA. This demo's ruleset requires its two cheap checks on each layer. The intended inheritance test requires lower layers to have no separate `stack-e2e` deployments. Merge the whole native stack through its asynchronous merge command. Do not disable the rule or use bypass to demonstrate success.
+The status target shows the deployment's status history. The deployment record's `sha` must equal the tested top SHA. The original experimental ruleset required two cheap checks on each layer. The intended inheritance test requires lower layers to have no separate `stack-e2e` deployments. Merge the whole native stack through its asynchronous merge command. Do not disable the rule or use bypass to demonstrate success.
 
 ## How the workflows work
 
@@ -77,9 +79,9 @@ make deployment-request PR=TOP_PR_NUMBER FORCE_FAILURE=true
 
 The E2E job deliberately exits with an error after the HTTP assertions. The source and result workflows should fail; the deployment should have status `failure`. Attempt the merge again. It should remain blocked.
 
-Run the normal request and verify deployment `success`. Before merging, add and push a new top commit with `gh stack push`. The previous deployment still names the old SHA. Attempt the merge again; the new head should be blocked. Request E2E for the new SHA, wait for the source and result workflows, verify lower heads have no deployments, then merge with the ruleset still active.
+Run the normal request and verify deployment `success`. Before merging, add and push a new top commit with `gh stack push`. The previous deployment still names the old SHA. Attempt the merge again; the new head should be blocked. Request E2E for the new SHA, wait for the source and result workflows, verify lower heads have no deployments, then attempt the merge with the reproduced ruleset active. The original experiment remained blocked at this step despite successful top validation.
 
-These are expected outcomes until backed by the linked execution evidence. Do not merge early during the stale-evidence test.
+These steps preserve the original test hypothesis and negative controls. The linked evidence records the failed positive inheritance test. Do not merge early during the stale-evidence test.
 
 ## Limits and trust
 
@@ -91,7 +93,7 @@ These are expected outcomes until backed by the linked execution evidence. Do no
 - API reads and the success update are not atomic. The final check rejects changes seen during testing; the exact-SHA merge gate must reject later head changes. The evidence tests that path, not every concurrent update race.
 - A later change to the trunk or a partially merged/rebased stack can require a new request. This demo uses complete linear stacks and no merge queue. It does not prove every merge-queue or partial-stack case.
 - `auto_inactive: false` retains successful records across independent stacks. This avoids one stack's test automatically marking another's record inactive. It does not make an old record apply to a new SHA.
-- The earlier `make e2e-request` is still a standalone opt-in test. It creates no deployment and cannot satisfy this gate. Changing `E2E_MODE` does not remove the active required-deployment rule.
+- The earlier `make e2e-request` is still a standalone opt-in test. It creates no deployment and cannot satisfy this gate. The required-deployment rule was removed separately; `E2E_MODE` selects workflow behavior, not repository protection.
 
 ## Sources
 

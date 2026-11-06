@@ -4,10 +4,16 @@
 
 Tested on November 5, 2026, America/New_York. GitHub timestamps below use UTC on November 6. This extends the earlier [CI cancellation evidence](evidence.md).
 
+## Retirement after the experiment
+
+At the user's request, experimental ruleset **26670578 (Stack E2E gate)** was removed after the native stack inheritance test failed. Its required deployment, two required checks, PR requirement, force-push restriction, and deletion restriction were all part of that one experimental ruleset. No unrelated protection was removed. The rule remained active during the recorded proof attempts; retirement happened later and does not turn the failed stack merge into a success.
+
+The `stack-e2e` environment, deployment records, workflow files, saved API observations, and retained PRs #6 and #7 are preserved. The current repository has no active rule from this experiment. Documentation can now be pushed directly to `main` without this experimental gate.
+
 ## Configuration during the proof
 
 - Environment: [stack-e2e](https://github.com/BretFisher/agent-concurrency/deployments/activity_log?environments_filter=stack-e2e).
-- Active ruleset: [Stack E2E gate, ID 26670578](https://github.com/BretFisher/agent-concurrency/rules/26670578), targeting `main`.
+- Ruleset active during the proof: **Stack E2E gate, ID 26670578**, targeting `main`. It has since been removed; its configuration is preserved in [saved API observations](deployment-observations.json).
 - `bypass_actors: []`; GitHub returned `current_user_can_bypass: "never"` for BretFisher.
 - Required deployment environment: `stack-e2e`.
 - Required cheap checks on each layer: `Fast PR Checks / Lint Full Stack` and `Fast PR Checks / Unit Test And Build`, from GitHub Actions.
@@ -139,7 +145,7 @@ The API confirmed that PRs #6 and #7 remained open and unmerged. The ruleset sta
 ## State and limits
 
 - PR #9 merged after passing the active gate. Native stack #8 PRs #6 and #7 are left open for inspection, not merged or bypassed.
-- The current environment and active ruleset remain in place. `E2E_MODE=deployment` selects this demo's per-PR cheap checks. That setting is an experimental configuration here, not a recommendation to repeat every validation category per PR.
+- The experimental ruleset has been removed. The environment and workflow files remain as historical teaching artifacts. `E2E_MODE=deployment` still selects the retained per-PR checks, but they are no longer required by this experiment's branch protection. This mode is not a recommendation to repeat every validation category per PR.
 - Publishing this evidence in a separate PR advances `main`; stack #8 will need a rebase before a new reproduction attempt. The JSON snapshot preserves the exact linear state used for the failed merge proof.
 - [Raw API observations](deployment-observations.json) preserve the ruleset, member SHAs, deployment payloads and status histories, and final merge failures. Async merge results expire after 24 hours, so the response is saved here.
 - The deployment is simulated on an ephemeral Actions runner. The HTTP assertions are real. No persistent service, cloud account, or secret was used.
