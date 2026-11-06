@@ -1,0 +1,26 @@
+name: Stack Cleanup
+on:
+  pull_request:
+    types: [stacked]
+permissions: {}
+# Keep active cleanup running; a pending invocation reads the latest stack.
+concurrency:
+  group: stack-cleanup-${{ github.event.pull_request.stack.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    name: Cancel Lower Stack Runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      # Execute a fixed action revision, with no checkout of PR code.
+      - name: Clean Up Stack Runs
+        uses: BretFisher/agent-concurrency@dca91a87ab79f558e44b0df1296bf621cf344f98
+        with:
+          token: ${{ github.token }}
+          warn-on-missing-opt-in: 'yes'
+          policy-ref: da3626a3ac94026d3de3e3947e875f5a52069826
