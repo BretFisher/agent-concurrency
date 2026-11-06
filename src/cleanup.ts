@@ -30,7 +30,8 @@ export async function cleanup(api: Api, config: Config, wait: (ms: number) => Pr
     }
     const top = members.at(-1)!;
     const topPull = await api.pull(top.number);
-    if (topPull.stack?.number !== stack.number || topPull.stack.position !== members.length ||
+    if (topPull.state !== 'open' || topPull.head.repo.id !== config.repositoryId ||
+        topPull.head.ref !== top.head.ref || topPull.stack?.number !== stack.number || topPull.stack.position !== members.length ||
         topPull.stack.size !== members.length || topPull.head.sha !== top.head.sha) {
       throw new Error('The current top PR disagrees with the stack response.');
     }
@@ -74,7 +75,15 @@ async function associated(api: Api, run: Run, pr: Pull, repo: number): Promise<b
 }
 
 async function inspectWorkflow(api: Api, config: Config, report: Report, stack: Stack, top: Pull, workflow: Workflow, cutoff: number, wait: (ms: number) => Promise<void>, now: () => Date): Promise<void> {
-  const trustedSource = await api.source(workflow.path, report.policySha!);
+  let trustedSource: string;
+  try { trustedSource = await api.source(workflow.path, report.policySha!); }
+  catch (error) {
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
+      report.policies.push({workflow, policy: 'missing', detail: 'Workflow file is absent from the trusted policy revision; preserved.'});
+      return;
+    }
+    throw error;
+  }
   const declaration = policy(trustedSource);
   report.policies.push({workflow, policy: declaration.value, detail: declaration.detail});
   if (declaration.value !== 'yes') return;

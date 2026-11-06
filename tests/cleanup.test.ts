@@ -177,3 +177,14 @@ test('invalid YAML and job-level variable never opt in', () => {
 test('malformed API shapes fail validation', () => {
   assert.throws(() => parsePull({number: 1})); assert.throws(() => parseRun({id: 1}));
 });
+
+test('workflow absent from trusted branch is missing opt-in, not an API failure', async () => {
+  const api = new Fake(); api.source = async () => {throw Object.assign(new Error('Not Found'), {status: 404});};
+  const report = await execute(api); assert.deepEqual(api.cancelled, []); assert.deepEqual(report.errors, []);
+  assert.equal(report.policies[0].policy, 'missing');
+});
+test('closed top PR cannot authorize cancellation even if stack response is stale', async () => {
+  const api = new Fake(), original = api.pull.bind(api);
+  api.pull = async id => ({...await original(id), ...(id === 3 ? {state: 'closed'} : {})});
+  const report = await execute(api); assert.deepEqual(api.cancelled, []); assert.ok(report.errors.length);
+});

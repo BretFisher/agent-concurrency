@@ -32093,7 +32093,7 @@ async function cleanup(api, config, wait = (ms) => new Promise((resolve) => setT
     }
     const top = members.at(-1);
     const topPull = await api.pull(top.number);
-    if (topPull.stack?.number !== stack.number || topPull.stack.position !== members.length || topPull.stack.size !== members.length || topPull.head.sha !== top.head.sha) {
+    if (topPull.state !== "open" || topPull.head.repo.id !== config.repositoryId || topPull.head.ref !== top.head.ref || topPull.stack?.number !== stack.number || topPull.stack.position !== members.length || topPull.stack.size !== members.length || topPull.head.sha !== top.head.sha) {
       throw new Error("The current top PR disagrees with the stack response.");
     }
     for (const lower of members.slice(0, -1)) {
@@ -32138,7 +32138,16 @@ async function associated(api, run2, pr, repo) {
   return (await api.associated(run2.head_sha)).some((p) => p.number === pr.number && p.head.repo.id === repo);
 }
 async function inspectWorkflow(api, config, report, stack, top, workflow, cutoff, wait, now) {
-  const trustedSource = await api.source(workflow.path, report.policySha);
+  let trustedSource;
+  try {
+    trustedSource = await api.source(workflow.path, report.policySha);
+  } catch (error2) {
+    if (error2 && typeof error2 === "object" && "status" in error2 && error2.status === 404) {
+      report.policies.push({ workflow, policy: "missing", detail: "Workflow file is absent from the trusted policy revision; preserved." });
+      return;
+    }
+    throw error2;
+  }
   const declaration = policy(trustedSource);
   report.policies.push({ workflow, policy: declaration.value, detail: declaration.detail });
   if (declaration.value !== "yes") return;
