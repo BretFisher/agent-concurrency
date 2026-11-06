@@ -1,0 +1,28 @@
+name: Stack Event Probe
+on:
+  pull_request:
+    types: [stacked]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  observe:
+    name: Record Stack Event
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Record Snapshot And Current State
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const p = context.payload.pull_request;
+            const snapshot = {event: context.eventName, action: context.payload.action || null, pr: p?.number || null, stack: p?.stack || null, sha: context.sha, ref: context.ref};
+            let current = null;
+            if (p) {
+              const {data} = await github.rest.pulls.get({...context.repo, pull_number:p.number});
+              current = {pr:data.number, head:data.head.sha, stack:data.stack || null};
+            }
+            const evidence = {snapshot, current};
+            core.info(JSON.stringify(evidence));
+            await core.summary.addHeading('Stack event evidence').addCodeBlock(JSON.stringify(evidence,null,2),'json').write();
