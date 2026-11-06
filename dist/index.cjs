@@ -19531,12 +19531,12 @@ var require_lib = __commonJS({
             throw new Error("Client has already been disposed.");
           }
           const parsedUrl = new URL(requestUrl);
-          let info = this._prepareRequest(verb, parsedUrl, headers);
+          let info2 = this._prepareRequest(verb, parsedUrl, headers);
           const maxTries = this._allowRetries && RetryableHttpVerbs.includes(verb) ? this._maxRetries + 1 : 1;
           let numTries = 0;
           let response;
           do {
-            response = yield this.requestRaw(info, data);
+            response = yield this.requestRaw(info2, data);
             if (response && response.message && response.message.statusCode === HttpCodes2.Unauthorized) {
               let authenticationHandler;
               for (const handler2 of this.handlers) {
@@ -19546,7 +19546,7 @@ var require_lib = __commonJS({
                 }
               }
               if (authenticationHandler) {
-                return authenticationHandler.handleAuthentication(this, info, data);
+                return authenticationHandler.handleAuthentication(this, info2, data);
               } else {
                 return response;
               }
@@ -19569,8 +19569,8 @@ var require_lib = __commonJS({
                   }
                 }
               }
-              info = this._prepareRequest(verb, parsedRedirectUrl, headers);
-              response = yield this.requestRaw(info, data);
+              info2 = this._prepareRequest(verb, parsedRedirectUrl, headers);
+              response = yield this.requestRaw(info2, data);
               redirectsRemaining--;
             }
             if (!response.message.statusCode || !HttpResponseRetryCodes2.includes(response.message.statusCode)) {
@@ -19599,7 +19599,7 @@ var require_lib = __commonJS({
        * @param info
        * @param data
        */
-      requestRaw(info, data) {
+      requestRaw(info2, data) {
         return __awaiter3(this, void 0, void 0, function* () {
           return new Promise((resolve, reject) => {
             function callbackForResult(err, res) {
@@ -19611,7 +19611,7 @@ var require_lib = __commonJS({
                 resolve(res);
               }
             }
-            this.requestRawWithCallback(info, data, callbackForResult);
+            this.requestRawWithCallback(info2, data, callbackForResult);
           });
         });
       }
@@ -19621,12 +19621,12 @@ var require_lib = __commonJS({
        * @param data
        * @param onResult
        */
-      requestRawWithCallback(info, data, onResult) {
+      requestRawWithCallback(info2, data, onResult) {
         if (typeof data === "string") {
-          if (!info.options.headers) {
-            info.options.headers = {};
+          if (!info2.options.headers) {
+            info2.options.headers = {};
           }
-          info.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
+          info2.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
         }
         let callbackCalled = false;
         function handleResult(err, res) {
@@ -19635,7 +19635,7 @@ var require_lib = __commonJS({
             onResult(err, res);
           }
         }
-        const req = info.httpModule.request(info.options, (msg) => {
+        const req = info2.httpModule.request(info2.options, (msg) => {
           const res = new HttpClientResponse(msg);
           handleResult(void 0, res);
         });
@@ -19647,7 +19647,7 @@ var require_lib = __commonJS({
           if (socket) {
             socket.end();
           }
-          handleResult(new Error(`Request timeout: ${info.options.path}`));
+          handleResult(new Error(`Request timeout: ${info2.options.path}`));
         });
         req.on("error", function(err) {
           handleResult(err);
@@ -19683,27 +19683,27 @@ var require_lib = __commonJS({
         return this._getProxyAgentDispatcher(parsedUrl, proxyUrl);
       }
       _prepareRequest(method, requestUrl, headers) {
-        const info = {};
-        info.parsedUrl = requestUrl;
-        const usingSsl = info.parsedUrl.protocol === "https:";
-        info.httpModule = usingSsl ? https : http;
+        const info2 = {};
+        info2.parsedUrl = requestUrl;
+        const usingSsl = info2.parsedUrl.protocol === "https:";
+        info2.httpModule = usingSsl ? https : http;
         const defaultPort = usingSsl ? 443 : 80;
-        info.options = {};
-        info.options.host = info.parsedUrl.hostname;
-        info.options.port = info.parsedUrl.port ? parseInt(info.parsedUrl.port) : defaultPort;
-        info.options.path = (info.parsedUrl.pathname || "") + (info.parsedUrl.search || "");
-        info.options.method = method;
-        info.options.headers = this._mergeHeaders(headers);
+        info2.options = {};
+        info2.options.host = info2.parsedUrl.hostname;
+        info2.options.port = info2.parsedUrl.port ? parseInt(info2.parsedUrl.port) : defaultPort;
+        info2.options.path = (info2.parsedUrl.pathname || "") + (info2.parsedUrl.search || "");
+        info2.options.method = method;
+        info2.options.headers = this._mergeHeaders(headers);
         if (this.userAgent != null) {
-          info.options.headers["user-agent"] = this.userAgent;
+          info2.options.headers["user-agent"] = this.userAgent;
         }
-        info.options.agent = this._getAgent(info.parsedUrl);
+        info2.options.agent = this._getAgent(info2.parsedUrl);
         if (this.handlers) {
           for (const handler2 of this.handlers) {
-            handler2.prepareRequest(info.options);
+            handler2.prepareRequest(info2.options);
           }
         }
-        return info;
+        return info2;
       }
       _mergeHeaders(headers) {
         if (this.requestOptions && this.requestOptions.headers) {
@@ -27740,6 +27740,9 @@ function error(message2, properties = {}) {
 function warning(message2, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message2 instanceof Error ? message2.toString() : message2);
 }
+function info(message2) {
+  process.stdout.write(message2 + os4.EOL);
+}
 
 // node_modules/@actions/github/lib/context.js
 var import_fs2 = require("fs");
@@ -32105,7 +32108,7 @@ async function cleanup(api, config, wait = (ms) => new Promise((resolve) => setT
     for (const workflow of await api.workflows()) {
       if (workflow.state !== "active" || workflow.id === current.workflow_id) continue;
       if (!/^\.github\/workflows\/[^/]+\.ya?ml$/.test(workflow.path)) {
-        report.policies.push({ workflow, policy: "invalid", detail: "Unsupported workflow path; preserved." });
+        report.policies.push({ workflow, policy: "no", detail: "GitHub-managed or unsupported workflow path; excluded." });
         continue;
       }
       try {
@@ -32238,7 +32241,7 @@ function summary2(report, config) {
   const missing = report.policies.filter((p) => p.policy === "missing").length;
   return `# Stack cleanup
 
-${link(report.trigger, "Cleanup invocation")} \xB7 ${esc(config.event)}.${esc(config.action)} \xB7 ${esc(config.dryRun ? "Dry run" : "Cancellation enabled")}
+${link(report.trigger, "Cleanup invocation")} \xB7 ${esc(config.event)}.${esc(config.action)} \xB7 ${esc(config.dryRun ? "Dry run" : "Cancellation enabled")} \xB7 Joining ${link(`${root}/pull/${config.triggerPr}`, `PR ${config.triggerPr}`)}
 
 ` + (report.stack ? `Stack ${esc(report.stack.number)} \xB7 Top ${link(`${root}/pull/${report.stack.pull_requests.at(-1).number}`, `PR ${report.stack.pull_requests.at(-1).number}`)}
 
@@ -32294,6 +32297,7 @@ async function main() {
   };
   const report = await cleanup(new GitHubApi(token, config.repository), config);
   await summary.addRaw(summary2(report, config)).write();
+  info(`Stack cleanup report: ${JSON.stringify(report)}`);
   const missing = report.policies.filter((p) => p.policy === "missing");
   if (config.warnMissing && missing.length) warning(`Missing ALLOW_STACK_CLEANUP (preserved): ${missing.map((p) => p.workflow.path).join(", ")}`);
   for (const declaration of report.policies.filter((p) => p.policy === "invalid")) warning(`${declaration.workflow.path}: ${declaration.detail}`);

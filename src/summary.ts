@@ -10,7 +10,7 @@ export function summary(report: Report, config: Config): string {
   const policyRows = report.policies.filter(p => p.policy !== 'missing' || config.warnMissing).map(({workflow, policy, detail}) =>
     `<tr><td>${link(`${root}/blob/${report.policySha}/${workflow.path}`, workflow.name)}</td><td>${esc(policy)}</td><td>${esc(detail)}</td></tr>`).join('\n');
   const missing = report.policies.filter(p => p.policy === 'missing').length;
-  return `# Stack cleanup\n\n${link(report.trigger, 'Cleanup invocation')} · ${esc(config.event)}.${esc(config.action)} · ${esc(config.dryRun ? 'Dry run' : 'Cancellation enabled')}\n\n` +
+  return `# Stack cleanup\n\n${link(report.trigger, 'Cleanup invocation')} · ${esc(config.event)}.${esc(config.action)} · ${esc(config.dryRun ? 'Dry run' : 'Cancellation enabled')} · Joining ${link(`${root}/pull/${config.triggerPr}`, `PR ${config.triggerPr}`)}\n\n` +
     (report.stack ? `Stack ${esc(report.stack.number)} · Top ${link(`${root}/pull/${report.stack.pull_requests.at(-1)!.number}`, `PR ${report.stack.pull_requests.at(-1)!.number}`)}\n\n` : '') +
     (report.policySha ? `Policy revision: ${link(`${root}/commit/${report.policySha}`, report.policySha)}\n\n` : '') +
     `## Cancellation requests and observed outcomes\n\nA request being accepted does not prove a run or job stopped. Job states below are observations, not an assertion that cleanup caused every cancellation. Completed jobs are not canceled retroactively.\n\n` +
