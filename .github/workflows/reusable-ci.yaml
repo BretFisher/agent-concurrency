@@ -1,0 +1,91 @@
+name: Shared CI
+on:
+  workflow_call:
+    inputs:
+      head:
+        required: true
+        type: string
+      base:
+        required: true
+        type: string
+      expensive:
+        required: true
+        type: boolean
+permissions: {}
+# Do not copy the caller's concurrency group here: it could cancel itself.
+jobs:
+  lint:
+    name: Lint Full Stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check Out Exact Head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Show Full Net Diff
+        env:
+          BASE_SHA: ${{ inputs.base }}
+          HEAD_SHA: ${{ inputs.head }}
+        run: |
+          set -euo pipefail
+          echo "Full stack range: $BASE_SHA...$HEAD_SHA"
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" | tee changed-files.txt
+          {
+            echo '### Full stack changed files'
+            echo '```text'
+            cat changed-files.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Check all packages. The full diff above is available to diff-aware tools.
+      - name: Lint Application
+        run: make lint
+  test:
+    name: Unit Test And Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check Out Exact Head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head }}
+          persist-credentials: false
+      - name: Set Up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test And Build
+        run: make test build
+  e2e:
+    name: Simulated Expensive E2E
+    needs: [lint, test]
+    if: inputs.expensive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check Out Exact Head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head }}
+          persist-credentials: false
+      - name: Set Up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test HTTP With Simulated Setup
+        run: make e2e SIMULATED_E2E_DELAY=90s

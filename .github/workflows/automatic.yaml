@@ -1,0 +1,57 @@
+name: Automatic CI
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions: {}
+# Stable per-PR key cancels old commits before they reach the shared suite.
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  current:
+    name: Validate Current Tip
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      pull-requests: read
+    outputs:
+      valid: ${{ steps.current.outputs.valid }}
+      key: ${{ steps.current.outputs.key }}
+      head: ${{ steps.current.outputs.head }}
+      base: ${{ steps.current.outputs.base }}
+    steps:
+      # No checkout and no PR code execution in this API-only job.
+      - name: Read Current Membership
+        id: current
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const number = Number(process.env.PR_NUMBER);
+            const expected = process.env.EXPECTED_SHA;
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: number});
+            const s = pr.stack;
+            const valid = pr.state === 'open' && pr.head.sha === expected && (!s || s.position === s.size);
+            core.setOutput('valid', String(valid));
+            core.setOutput('key', s ? `stack-${s.number}` : `pr-${number}`);
+            core.setOutput('head', pr.head.sha);
+            core.setOutput('base', s ? s.base.sha : pr.base.sha);
+            await core.summary.addHeading('Current PR state').addCodeBlock(JSON.stringify({number, expected, head: pr.head.sha, stack: s || null, valid}, null, 2)).write();
+  suite:
+    name: Current Tip Suite
+    needs: current
+    if: needs.current.outputs.valid == 'true'
+    permissions:
+      contents: read
+    # Lower layers cannot enter this group. No commit SHA in the key.
+    concurrency:
+      group: ${{ github.workflow }}-suite-${{ needs.current.outputs.key }}
+      cancel-in-progress: true
+    uses: $/.github/workflows/reusable-ci.yaml
+    with:
+      head: ${{ needs.current.outputs.head }}
+      base: ${{ needs.current.outputs.base }}
+      expensive: ${{ vars.E2E_MODE != 'opt-in' }}
