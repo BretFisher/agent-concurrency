@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions: {}
-# Stable per-PR key cancels old commits before they reach the shared suite.
+# Stable per-PR key cancels old commits before they reach the shared validation jobs.
 concurrency:
   group: ${{ github.workflow }}-pr-${{ inputs.pr }}
   cancel-in-progress: true

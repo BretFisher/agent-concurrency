@@ -11,14 +11,6 @@ on:
       expensive:
         required: true
         type: boolean
-      delay:
-        description: Simulated setup delay
-        type: string
-        default: 90s
-      force_failure:
-        description: Deliberate failure for the gate demo
-        type: boolean
-        default: false
 permissions: {}
 # Do not copy the caller's concurrency group here: it could cancel itself.
 jobs:
@@ -96,12 +88,4 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Test HTTP With Simulated Setup
-        env:
-          SIMULATED_E2E_DELAY: ${{ inputs.delay }}
-        run: make e2e
-      - name: Inject Demo Failure
-        if: inputs.force_failure
-        run: |
-          set -euo pipefail
-          echo 'DEMO fault injection after the real HTTP assertions passed.'
-          exit 1
+        run: make e2e SIMULATED_E2E_DELAY=90s

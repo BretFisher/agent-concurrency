@@ -4,7 +4,7 @@ Inspected on 2026-11-05, America/New_York. Source was read at the exact revision
 
 The problem is general: rapid PR creation and commit updates can leave many obsolete validation jobs running at once. Native stacks add multiple cumulative revisions and more update events. These projects supply useful selection, cancellation, and reuse patterns, but none of the inspected public implementations establishes the complete native-stack cleanup and merge policy needed here.
 
-Read the [implementation guidelines](ci-methodology.md) for a proposed first-party adaptation. The existing [live demo evidence](evidence.md) and [failed deployment-inheritance experiment](deployment-evidence.md) remain separate from this source review.
+Read the [implementation guidelines](ci-methodology.md) for a proposed first-party adaptation. The [README](../README.md#retired-enforcement-experiment) summarizes the retired enforcement experiment. This source review does not establish new live behavior.
 
 ## Revisions and licenses
 
@@ -98,6 +98,6 @@ Tests include [default conditions](https://github.com/github/gh-aw/blob/b78fa776
 
 **Verified by source inspection:** the four decision mechanisms, their inspected tests, license-file contents, public-code boundaries, and the listed failure/pagination limits.
 
-**Verified separately by this repo's live tests:** per-PR supersession, selected stack-tip cancellation, full-stack Git diff, opt-in revision checks, and the deployment gate's negative cases. [Evidence](evidence.md); [deployment result](deployment-evidence.md).
+**Verified separately by this repo's live tests:** per-PR supersession, selected stack-tip cancellation, full-stack Git diff, opt-in revision checks, and the deployment gate's negative cases. The [README](../README.md) retains the concise teaching outcomes; the detailed experiment archive has been removed.
 
 **Not verified:** a complete first-party native-stack cleanup engine; pre-stack cross-layer cancellation; a timing bound; correct result reuse across all execution inputs; whole-stack-only merge enforcement; native deployment inheritance in this repository; hosted Graphite internals; or the security of any upstream action. Stars, public source, and tests do not substitute for those proofs.

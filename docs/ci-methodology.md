@@ -36,7 +36,7 @@ An event condition comparing `stack.position` with `stack.size` is a useful prel
 
 Before starting costly validation, query current PR and stack state. Record repository identity, all member PRs and head SHAs, trunk SHA, current top PR, and its exact head. Verify that lower changes are present in the top's linear history. If a lower PR changed but the top has not been rebased, the old top does not represent the current combined stack. Wait for a consistent state; do not authorize a full-stack merge.
 
-Validate the explicit top head. Use a full-history `git diff BASE...HEAD` from stack trunk to that head for diff-aware checks. A layer's PR changed-files API can omit lower-layer files. Preserve both revision and execution context in the result. [Native stack metadata](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/optimizing-ci-for-stacked-pull-requests); [this repo's full-diff evidence](evidence.md#native-stack-and-full-diff).
+Validate the explicit top head. Use a full-history `git diff BASE...HEAD` from stack trunk to that head for diff-aware checks. A layer's PR changed-files API can omit lower-layer files. Preserve both revision and execution context in the result. [Native stack metadata](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/optimizing-ci-for-stacked-pull-requests)..
 
 The existing demo uses a per-PR concurrency group plus a gated stack-wide reusable call. It proved selected supersession cases, but a run started before native membership has a different group. Native concurrency cannot discover that transition or cancel its leftover by itself. A new top may also have been a temporary top long enough to start work. An explicit opt-in request can delay work, but automatic triggering remains a valid design choice; it must ensure the desired current run starts without a person remembering a manual step.
 
@@ -120,7 +120,7 @@ Automatic selection answers what to run. Cancellation stops obsolete work. Neith
 
 If a policy validates only the complete top, it must separately prevent merging an unvalidated lower subset. Native stacks allow merging a selected PR and its lower prefix; whole-stack-only merging is not GitHub's default. Define and test any such restriction before claiming lower layers need no independent evidence. This guide does not implement it or prescribe blanket per-layer checks. [Native merge scope](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-apis-and-webhooks).
 
-A skipped job can report success without testing. A dispatched workflow does not automatically satisfy PR required status checks. The retired experiment required per-layer cheap checks to isolate deployment behavior. Those branch requirements have been removed and do not define the intended cost policy. Native required-deployment inheritance remains unverified in this repo despite successful active tip deployments. Preserve the [negative result](deployment-evidence.md); do not copy successful statuses to lower commits to hide it.
+A skipped job can report success without testing. A dispatched workflow does not automatically satisfy PR required status checks. The retired experiment required per-layer cheap checks to isolate deployment behavior. Those branch requirements have been removed and do not define the intended cost policy. Native required-deployment inheritance remains unverified in this repo despite successful active tip deployments. The [README](../README.md#retired-enforcement-experiment) summarizes the failed experiment. Do not copy successful statuses to lower commits to hide a missing validation result.
 
 Merge-queue validation has a different candidate revision and event contract. Keep its concurrency and result identity separate from PR runs. Graphite's hosted once-per-stack queue is not evidence that GitHub's native queue has the same behavior. [Source comparison](ci-source-study.md#1-graphite-public-adapter-hosted-decision).
 
@@ -140,4 +140,4 @@ Merge-queue validation has a different candidate revision and event contract. Ke
 | Canceled/failed tests or a new head after success | Merge authorization does not reuse that result |
 | A lower-prefix merge is attempted under a tip-only policy | Explicit policy enforcement rejects it; do not assume native all-stack-only semantics |
 
-These are proposed acceptance tests. Only the cases linked in the existing evidence have been tested live. The source review adds no new cleanup behavior or timing guarantee.
+These are proposed acceptance tests. Prior live demonstrations covered selected cancellation, diff, and opt-in cases; those observations do not prove this proposed cleanup algorithm. The source review adds no new cleanup behavior or timing guarantee.

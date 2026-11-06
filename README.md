@@ -17,7 +17,7 @@ These are design goals. The comparison below separates tested behavior from prop
 | --- | --- | --- | --- | --- |
 | Native concurrency | Cancels older workflow runs or job runs within a stable group | Simple first step for ordinary PR updates; can stop many validation jobs together | Scheduling order is not current-commit order. A standalone-to-stack key change leaves earlier runs outside the new group. | Per-PR and selected stack-tip supersession tested live |
 | Current-state API cleanup | Queries current membership and heads, then cancels proven obsolete runs in selected workflows | Can cover lower layers, old commits, equivalent duplicates, and earlier standalone-key runs once membership is known | Needs explicit scope, pagination, fresh reads, retries, and a runner. Unknown membership must not cause guessed cancellations. | Proposed method; no cleanup engine implemented |
-| Retired required-deployment experiment | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Retired; negative cases and standalone merging tested, native stack inheritance not reproduced |
+| Retired required-deployment experiment | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Removed after native stack inheritance was not reproduced |
 
 Automatic and opt-in triggering are separate policy choices. Either can be combined with selection, cancellation, and merge controls.
 
@@ -35,7 +35,7 @@ concurrency:
 
 Separate workflow identities preserve distinct validation work. Releases and state-changing deployments need their own deliberate concurrency policy. A late event or rerun can still arrive out of order; native concurrency alone does not establish which commit is current. [GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-The stack example adds a stack-wide group only after a tip check. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key. [Cancellation evidence](docs/evidence.md).
+The stack example adds a stack-wide group only after a tip check. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key.
 
 ## Current-state cleanup: select before canceling
 
@@ -64,29 +64,20 @@ This choice can apply to every selected validation category. The current opt-in 
 
 ## Validate the combined change
 
-Stack-tip validation must cover the full net change from trunk to the exact current top head. A layer's PR changed-files API can omit lower-layer files. The demo records a full-history `git diff BASE...HEAD` and tests an explicit head SHA. [Full-stack diff evidence](docs/evidence.md#native-stack-and-full-diff).
+Stack-tip validation must cover the full net change from trunk to the exact current top head. A layer's PR changed-files API can omit lower-layer files. The demo records a full-history `git diff BASE...HEAD` and tests an explicit head SHA.
 
 If a lower PR changes before the top is rebased, that top does not represent the complete current stack. Do not certify it as the combined change. Content equality is also a separate question: the same Git tree does not prove equivalent validation across toolchains, event inputs, base revisions, environments, or changing vulnerability data.
 
 For the intended tip-only validation mode, the chosen policy is **whole-stack-only merging**. This policy is not implemented or proven here. GitHub natively allows merging a selected PR and its lower prefix; it does not require the complete stack. A successful top test is not proof that every intermediate prefix is safe to merge. [Native merge scope](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-apis-and-webhooks).
 
-## Merge enforcement: preserve the failed result
+## Retired enforcement experiment
 
-GitHub [documents required-deployment inheritance](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests) for lower PRs in a linear stack. This repo did not reproduce that behavior:
-
-- Missing, failed, and stale deployment evidence blocked merging.
-- A canceled E2E workflow produced deployment failure.
-- An exact top SHA passed E2E and had an active successful deployment, but the full native stack merge remained blocked by the lower layer.
-- Standalone PRs passed the same active gate and merged without bypass.
-
-The experiment used per-layer cheap checks to isolate deployment behavior. That configuration is not a general requirement for a future tip-only cost policy. A skipped job can report success without testing; copying successful statuses to lower commits would not establish validation.
-
-Read the [deployment evidence](docs/deployment-evidence.md) and [detailed gate walkthrough](docs/required-deployment.md). The experimental protection was removed after the failed inheritance proof. The environment, workflow files, and historical records remain for inspection. The two failed deployment-demo PRs are retained for inspection. This is not a proven stack-wide merge solution or proof that GitHub can never provide one.
+We tested whether one successful top-PR E2E deployment could satisfy the required deployment for lower PRs in a linear native stack, as [GitHub documents](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests). The exact top commit passed, but the full stack stayed blocked by the lower layer. The experiment did not meet the goal, so its protection, environment, runnable setup, detailed record files, and test branches were removed. It is not recommended as a proven stack-wide solution. This result does not establish a confirmed GitHub bug or universal impossibility.
 
 ## What the demo proves
 
-A small Go HTTP application supplies real response assertions. A clearly labeled 90-second setup delay makes selected cancellation cases visible; the delay proves no application behavior. The deployment experiment uses an ephemeral runner and records the tested revision; it deploys no persistent external service.
+A small Go HTTP application supplies real response assertions. A clearly labeled 90-second setup delay makes selected cancellation cases visible; the delay proves no application behavior.
 
-Validation runs with read-only access. Separate API-only reporting checks the completed result and current revision before writing deployment status. This keeps deployment-write access away from PR code. Broader metadata cleanup and whole-stack-only merge enforcement remain design work, not hidden features of the current workflows.
+Validation runs with read-only access. Broader metadata cleanup and whole-stack-only merge enforcement remain design work, not hidden features of the current workflows.
 
 MIT license. See [LICENSE](LICENSE).
