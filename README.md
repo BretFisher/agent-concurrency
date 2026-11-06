@@ -23,19 +23,22 @@ Automatic and opt-in triggering are separate policy choices. Either can be combi
 
 ## Native concurrency: start with one PR
 
-Use a stable workflow-and-PR key for PR validation. A new run in that group requests cancellation of the previous run. Do not put the commit SHA in the group: each commit would then get its own group and avoid supersession.
+Use a stable workflow-and-ref key for validation. A new run in that group requests cancellation of the previous run. Do not put the commit SHA in the group: each commit would then get its own group and avoid supersession.
 
-This fragment teaches the grouping mechanism for a PR-triggered workflow:
+This baseline groups runs by workflow and ref:
 
 ```yaml
+# cancel any previously-started, yet still active runs of this workflow on the same branch
 concurrency:
-  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+  group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 ```
 
+For ordinary PR events, `github.ref` is the PR merge ref, such as `refs/pull/12/merge`. Updates to that PR keep the same key. For pushes and manual dispatches, it is the branch or tag ref. Different refs stay separate without a PR-number field. [GitHub ref context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context).
+
 Separate workflow identities preserve distinct validation work. Releases and state-changing deployments need their own deliberate concurrency policy. A late event or rerun can still arrive out of order; native concurrency alone does not establish which commit is current. [GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-The stack example adds a stack-wide group only after a tip check. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key.
+The stack example adds a stack-wide group only after a tip check. The automatic workflow uses the event ref for its standalone fallback. The manual workflow retains its target PR key. This job group stays distinct from the caller workflow group, and the called workflow declares no concurrency group. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key.
 
 ## Current-state cleanup: select before canceling
 
@@ -60,7 +63,7 @@ The [implementation guidelines](docs/ci-methodology.md) describe the proposed al
 | Automatic | Starts validation as relevant PR or commit events arrive; avoids a forgotten manual request | Temporary tips can start work before the stack is complete. Selection and cancellation must follow current state. |
 | Opt-in | Delays selected work until an explicit request, such as after the agent finishes creating a stack | A missing request leaves validation undone. New commits or rebases need fresh evidence and another request. |
 
-This choice can apply to every selected validation category. The current opt-in example uses E2E to demonstrate exact-revision requests. Opt-in triggering is not a cancellation mechanism or merge authorization by itself. A dispatched workflow does not automatically satisfy required PR status checks. [GitHub required-check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+This choice can apply to every selected validation category. The current opt-in example uses E2E to demonstrate exact-revision requests. It retains workflow-and-target-PR concurrency because the required `inputs.pr` identifies the requested PR. Requests for unrelated PRs stay separate even when both are dispatched from `main`. Its validation job retains stack-wide grouping, with a target-PR fallback for standalone requests. Opt-in triggering is not a cancellation mechanism or merge authorization by itself. A dispatched workflow does not automatically satisfy required PR status checks. [GitHub required-check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 
 ## Validate the combined change
 
@@ -77,6 +80,8 @@ We tested whether one successful top-PR E2E deployment could satisfy the require
 ## What the demo proves
 
 A small Go HTTP application supplies real response assertions. A clearly labeled 90-second setup delay makes selected cancellation cases visible; the delay proves no application behavior.
+
+The workflow/ref grouping update was checked statically; no new live cancellation test was run. Earlier automatic-workflow live tests used the prior PR-number grouping.
 
 Validation runs with read-only access. Broader metadata cleanup and whole-stack-only merge enforcement remain design work, not hidden features of the current workflows.
 

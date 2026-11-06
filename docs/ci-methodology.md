@@ -14,19 +14,20 @@ GitHub cancellation targets a **workflow run**, which contains job runs. Canceli
 
 The approved goal is: **Cancel obsolete job runs for new commits within the same PR.**
 
-Use native concurrency first. This fragment belongs in a PR-only validation workflow; it is not a new executable workflow in this repo:
+Use native concurrency first. This example shows a PR trigger with a baseline that also works for branch or tag refs; it is not a new executable workflow in this repo:
 
 ```yaml
 on:
   pull_request:
 
 permissions: {}
+# cancel any previously-started, yet still active runs of this workflow on the same branch
 concurrency:
-  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+  group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 ```
 
-The stable PR key groups old and new commits. A SHA in that key would prevent supersession. The workflow component separates different validation workflows. Give the real test jobs only their required read permissions. Use separate groups and deliberate non-canceling policies for releases and state-changing deployments.
+The stable workflow/ref key groups old and new commits on the same ref. Ordinary PR events use `refs/pull/<number>/merge`; pushes and manual dispatches use the branch or tag ref. Different refs stay separate even when no PR-number field exists. A SHA in that key would prevent supersession. The workflow component separates different validation workflows. [GitHub ref context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context). Give the real test jobs only their required read permissions. Use separate groups and deliberate non-canceling policies for releases and state-changing deployments.
 
 Native concurrency operates on scheduling order, not authoritative commit order. A late old event or rerun still needs a startup check against the current PR head if exact freshness is required. GitHub documents that queue entry order is not dispatch or commit order. [Concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
@@ -38,7 +39,7 @@ Before starting costly validation, query current PR and stack state. Record repo
 
 Validate the explicit top head. Use a full-history `git diff BASE...HEAD` from stack trunk to that head for diff-aware checks. A layer's PR changed-files API can omit lower-layer files. Preserve both revision and execution context in the result. [Native stack metadata](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/optimizing-ci-for-stacked-pull-requests)..
 
-The existing demo uses a per-PR concurrency group plus a gated stack-wide reusable call. It proved selected supersession cases, but a run started before native membership has a different group. Native concurrency cannot discover that transition or cancel its leftover by itself. A new top may also have been a temporary top long enough to start work. An explicit opt-in request can delay work, but automatic triggering remains a valid design choice; it must ensure the desired current run starts without a person remembering a manual step.
+The automatic workflow uses workflow/ref concurrency plus a gated stack-wide reusable call. Its job group uses the stack number when membership exists and the event ref otherwise. Its group stays distinct from the workflow group; the called workflow declares no concurrency group. Earlier live tests proved selected supersession cases with the prior PR-number key. The workflow/ref update has static checks only. A run started before native membership still has a different job group. Native concurrency cannot discover that transition or cancel its leftover by itself. A new top may also have been a temporary top long enough to start work. The opt-in workflow retains workflow-and-target-PR concurrency based on required `inputs.pr`. Its validation job retains the stack key with a target-PR fallback. Requests for unrelated target PRs stay separate even when both are dispatched from `main`. An explicit opt-in request can delay work, but automatic triggering remains a valid design choice; it must ensure the desired current run starts without a person remembering a manual step.
 
 ## A proposed metadata-only reconciliation algorithm
 
