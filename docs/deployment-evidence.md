@@ -75,3 +75,27 @@ A second native stack merge attempt returned the same missing-successful-deploym
 [Result workflow 42159676772](https://github.com/BretFisher/agent-concurrency/actions/runs/42159676772) passed current-state validation and marked deployment **7591949719** `success`. Its description was `HTTP E2E passed for the unchanged current tip and full stack.` The lower head had no `stack-e2e` deployment.
 
 The top PR is advanced by this evidence commit before attempting the stale-evidence merge test. The prior deployment still names the earlier SHA. The final evidence will record whether GitHub blocks that new revision and whether a fresh successful deployment permits an atomic merge while the rule remains active.
+
+## A new head invalidated the earlier success
+
+PR #7 advanced to `d717ee339c8e4963d121021ec2ff775554c6898b`. The [new cheap suite 42159741268](https://github.com/BretFisher/agent-concurrency/actions/runs/42159741268) passed. Deployment **7591949719** still had `success` for the old `3ea9b74` SHA, and no deployment existed for the new head.
+
+A third `make stack-merge STACK=8` attempt was rejected with `Missing successful active stack-e2e deployment.` Nothing merged. This proves that the earlier top deployment did not authorize the new head in this native stack.
+
+[Source 42159853978](https://github.com/BretFisher/agent-concurrency/actions/runs/42159853978) was then requested explicitly for `d717ee339c8e4963d121021ec2ff775554c6898b`. Its final result and the protected merge result are recorded below after execution.
+
+## SHA-only deployment did not provide inheritance
+
+Source **42159853978** and [result 42160046901](https://github.com/BretFisher/agent-concurrency/actions/runs/42160046901) passed. Deployment **7591990350** had SHA `d717ee339c8e4963d121021ec2ff775554c6898b`, latest status `SUCCESS`, and GraphQL state `ACTIVE`. PR #7 was clean. PR #6 remained blocked, and two more native stack merge attempts still returned the missing-deployment error.
+
+The GraphQL deployment `ref` was `null`: this record used a SHA-only deployment reference. Thus exact SHA success was sufficient for the top PR itself, but did not give the intended lower-layer inheritance in this test.
+
+[Fix PR #9](https://github.com/BretFisher/agent-concurrency/pull/9) changed the API request to use `pr.head.ref`, then immediately checks that the resolved deployment SHA equals the immutable requested SHA before testing. This preserves branch association without accepting a moved branch. The fix passed [source 42160330679](https://github.com/BretFisher/agent-concurrency/actions/runs/42160330679), [result 42160500732](https://github.com/BretFisher/agent-concurrency/actions/runs/42160500732), and its required cheap checks. It merged through the still-active gate as a standalone PR. No rule or bypass setting changed.
+
+Stack #8 was rebased onto the fix at `1b5d45e91cca57e9ac505474d746e3fad4e23d63`. Its lower head became `b77d090369830829c680e79caea416621eedf53a`; its top became `b6065a71d96a8f931741aa4f4cfdac3c1d8c1dd1`. [Source 42160560905](https://github.com/BretFisher/agent-concurrency/actions/runs/42160560905) tests that exact new top through the corrected workflow.
+
+## Branch-associated exact SHA
+
+The corrected [source 42160560905](https://github.com/BretFisher/agent-concurrency/actions/runs/42160560905) and [result 42160737435](https://github.com/BretFisher/agent-concurrency/actions/runs/42160737435) passed. Deployment **7592086904** recorded ref `deployment-demo/request` and SHA `b6065a71d96a8f931741aa4f4cfdac3c1d8c1dd1`. GraphQL returned that branch under `refs/heads/` instead of `null`.
+
+The workflow supplied a branch reference, but accepted the deployment only because the API-resolved SHA exactly matched the immutable request. This evidence update advances the top again so the stale-head merge test can be repeated against the corrected binding. Lower-layer inheritance is not claimed until the final atomic merge succeeds.
