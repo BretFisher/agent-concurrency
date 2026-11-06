@@ -133,9 +133,9 @@ class ScopeTests(unittest.TestCase):
     def test_cancellation_failure_is_reported(self):
         f=fixture();f['cancel_error']=True
         r,_=self.execute(f);self.assertNotEqual(r.returncode,0);self.assertIn('request failed',r.stdout)
-    def test_unconfirmed_cancellation_is_reported(self):
+    def test_accepted_but_pending_cancellation_is_explicit(self):
         f=fixture();f['never_finishes']=True
-        r,_=self.execute(f);self.assertNotEqual(r.returncode,0);self.assertIn('unconfirmed',r.stdout)
+        r,_=self.execute(f);self.assertEqual(r.returncode,0);self.assertIn('final outcome still pending',r.stdout)
     def test_event_scope_can_be_narrowed(self):
         f=fixture();f['responses']['repos/o/r/actions/runs/30']['event']='push'
         r,s=self.execute(f,STACK_CANCEL_EVENTS='pull_request')

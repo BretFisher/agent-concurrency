@@ -69,6 +69,7 @@ jq --arg events "$events" --argjson n "$run_number" --argjson repo "$repo_id" \
 
 cancelled=0
 failed=0
+: > "$tmp/requested"
 while IFS= read -r candidate; do
   id=$(jq -r '.run.id' <<< "$candidate")
   lower_pr=$(jq -r '.pr' <<< "$candidate")
@@ -110,21 +111,18 @@ while IFS= read -r candidate; do
     continue
   fi
   note "Requested cancellation of run $id on lower PR #$lower_pr in stack #$stack."
-  confirmed=false
-  for ((attempt = 0; attempt < 20; attempt++)); do
-    api "$root/actions/runs/$id" > "$tmp/result.json"
-    if jq -e '.status == "completed"' "$tmp/result.json" > /dev/null; then
-      note "Run $id finished with conclusion $(jq -r '.conclusion' "$tmp/result.json")."
-      confirmed=true
-      break
-    fi
-    sleep 3
-  done
-  if [[ "$confirmed" == false ]]; then
-    note "Run $id has not finished yet; cancellation is unconfirmed."
-    failed=1
-  fi
+  printf '%s\n' "$id" >> "$tmp/requested"
   cancelled=$((cancelled + 1))
 done < <(jq -c '.' "$tmp/candidates.jsonl")
-note "Stack #$stack top PR #$pr: $cancelled cancellation requests; dry-run=$dry_run."
+pending=0
+while IFS= read -r id; do
+  api "$root/actions/runs/$id" > "$tmp/result.json"
+  if jq -e '.status == "completed"' "$tmp/result.json" > /dev/null; then
+    note "Run $id finished with conclusion $(jq -r '.conclusion' "$tmp/result.json")."
+  else
+    note "Run $id: cancellation accepted, final outcome still pending."
+    pending=$((pending + 1))
+  fi
+done < "$tmp/requested"
+note "Stack #$stack top PR #$pr: $cancelled accepted cancellation requests, $pending final outcomes pending; dry-run=$dry_run."
 exit "$failed"
