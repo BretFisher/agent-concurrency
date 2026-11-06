@@ -19,7 +19,7 @@ jobs:
     steps:
       # Execute a fixed action revision, with no checkout of PR code.
       - name: Clean Up Stack Runs
-        uses: BretFisher/agent-concurrency@dca91a87ab79f558e44b0df1296bf621cf344f98
+        uses: BretFisher/agent-concurrency@68493865e245e6cdcf34cf495290406387bf4e28
         with:
           token: ${{ github.token }}
           warn-on-missing-opt-in: 'yes'
