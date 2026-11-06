@@ -85,3 +85,11 @@ I checked the workflow/ref grouping update statically. I did not run a new live 
 Validation runs with read-only access. Broader metadata cleanup and whole-stack-only merge enforcement remain design work, not hidden features of the current workflows.
 
 MIT license. See [LICENSE](LICENSE).
+
+## Stack cancellation test commands
+
+`make stack-cancel-test` runs ShellCheck and local API-mock tests. It requires Bash, ShellCheck, Python 3, and jq. The mock supplies `gh`; it makes no network changes.
+
+`make stack-cancel RUN_ID=<run-id>` inspects an existing top-PR run using your authenticated `gh` session. It defaults to a dry run. Set `DRY_RUN=false` to request cancellations. Set `REPO=owner/repository` for another repository. Live use requires Bash, gh, jq, and Actions write access.
+
+The live workflows are test probes. `Stack Cancel Demo` runs cancellation only when repository variable `STACK_CLEANUP_ENABLED=true`; its separate simulated validation job is never gated by cleanup. Detailed live findings are being collected before the level descriptions are updated.

@@ -24,3 +24,13 @@ automatic-mode:
 	gh variable set E2E_MODE --body automatic
 demo-status:
 	gh run list --limit 10
+
+.PHONY: stack-cancel-test stack-cancel
+stack-cancel-test:
+	shellcheck scripts/cancel-lower-stack-runs.sh
+	python3 tests/test_stack_cancel.py
+REPO ?= BretFisher/agent-concurrency
+DRY_RUN ?= true
+stack-cancel:
+	@test -n "$(RUN_ID)" || (echo 'Use make stack-cancel RUN_ID=<top-workflow-run-id>'; exit 1)
+	GITHUB_REPOSITORY="$(REPO)" GITHUB_RUN_ID="$(RUN_ID)" STACK_CANCEL_DRY_RUN="$(DRY_RUN)" bash scripts/cancel-lower-stack-runs.sh
