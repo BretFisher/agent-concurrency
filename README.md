@@ -11,17 +11,16 @@ The cost problem includes lint, unit tests, integration tests, E2E, CVE scans, a
 
 These are design goals. The comparison below separates tested behavior from proposed behavior. GitHub's cancellation API targets a **workflow run**, which contains job runs; canceling that workflow run can stop its jobs together.
 
-## Compare the techniques
+## Compare the two levels
 
-| Technique | What it does | Main benefit | Main limit | Status in this repo |
+| Level | What it does | Main benefit | Main limit | Status in this repo |
 | --- | --- | --- | --- | --- |
-| Native concurrency | Cancels older workflow runs or job runs within a stable group | Simple first step for ordinary branch or PR updates; can stop many validation jobs together | Scheduling order is not current-commit order. A standalone-to-stack key change leaves earlier runs outside the new group. | Per-PR and selected stack-tip supersession tested live |
-| Current-state API cleanup | Queries current membership and heads, then cancels proven obsolete runs in selected workflows | Can cover lower layers, old commits, equivalent duplicates, and earlier standalone-key runs once membership is known | Needs explicit scope, pagination, fresh reads, retries, and a runner. Unknown membership must not cause guessed cancellations. | Proposed method; no cleanup engine implemented |
-| Retired required-deployment experiment | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Removed after native stack inheritance was not reproduced |
+| Level 1: simple branch or PR concurrency | Cancels older workflow runs or job runs within a stable workflow/ref group | Stops obsolete work after branch or PR updates | Scheduling order is not current-commit order. | Earlier per-PR supersession tested live; current workflow/ref key checked statically |
+| Level 2: advanced stack analysis | Checks current stack membership and heads to select validation and cancel obsolete work | Can cover lower layers, old commits, equivalent duplicates, and earlier standalone-key runs once membership is known | Needs explicit scope, pagination, fresh reads, retries, and a runner. Unknown membership must not cause guessed cancellations. | Selected stack-tip cancellation tested live; broader API cleanup proposed, not implemented |
 
 Automatic and opt-in triggering are separate policy choices. Either can be combined with selection, cancellation, and merge controls.
 
-## Native concurrency: within one branch or PR
+## Level 1: simple concurrency within one branch or PR
 
 Use a stable workflow-and-ref key for validation. A new run in that group requests cancellation of the previous run. Do not put the commit SHA in the group: each commit would then get its own group and avoid supersession.
 
@@ -38,9 +37,9 @@ For ordinary PR events, `github.ref` is the PR merge ref, such as `refs/pull/12/
 
 Separate workflow identities preserve distinct validation work. Releases and state-changing deployments need their own deliberate concurrency policy. A late event or rerun can still arrive out of order; native concurrency alone does not establish which commit is current. [GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-The stack example adds a stack-wide group only after a tip check. The automatic workflow uses the event ref for its standalone fallback. The manual workflow retains its target PR key. This job group stays distinct from the caller workflow group, and the called workflow declares no concurrency group. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key.
+## Level 2: advanced stack analysis
 
-## Current-state cleanup: select before canceling
+The stack example adds a stack-wide group only after a tip check. The automatic workflow uses the event ref for its standalone fallback. The manual workflow retains its target PR key. This job group stays distinct from the caller workflow group, and the called workflow declares no concurrency group. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key.
 
 A proposed metadata-only cleanup workflow would:
 
