@@ -1,0 +1,20 @@
+name: Stack Unit Probe
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+permissions: {}
+env:
+  ALLOW_STACK_CLEANUP: "yes"
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+jobs:
+  probe:
+    name: Simulate Active Work
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions: {}
+    steps:
+      - name: Hold Test Run Active
+        run: sleep 180

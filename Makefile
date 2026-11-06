@@ -43,3 +43,16 @@ stack-cleanup-enable:
 	gh variable set STACK_CLEANUP_ENABLED --body true
 stack-cleanup-disable:
 	gh variable set STACK_CLEANUP_ENABLED --body false
+
+# TypeScript action development. The bundled action needs no runtime install.
+.PHONY: action-install action-typecheck action-test action-build action-check
+action-install:
+	npm ci
+action-typecheck:
+	npm run typecheck
+action-test:
+	npm test
+action-build:
+	npm run build
+action-check:
+	npm run check
