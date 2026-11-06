@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 permissions: {}
 env:
-  ALLOW_STACK_CLEANUP: "yes"
+  ALLOW_STACK_WORKFLOW_PRUNE: "yes"
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true

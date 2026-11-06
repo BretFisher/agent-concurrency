@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 permissions: {}
 env:
-  ALLOW_STACK_CLEANUP: "yes"
+  ALLOW_STACK_WORKFLOW_PRUNE: "yes"
 # cancel any previously-started, yet still active runs of this workflow on the same branch
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}

@@ -14,7 +14,7 @@ test('real API adapter follows pagination, caches immutable sources, and posts c
       if (page === 1) res.setHeader('Link', `<http://127.0.0.1:${port}/repos/o/r/actions/workflows?page=2>; rel="next"`);
       res.end(JSON.stringify({total_count: 2, workflows: [{id: page, name: `Flow ${page}`, path: `.github/workflows/${page}.yaml`, state: 'active'}]}));
     } else if (url.pathname.includes('/contents/')) {
-      res.end(JSON.stringify({encoding: 'base64', content: Buffer.from('env:\n  ALLOW_STACK_CLEANUP: "yes"').toString('base64')}));
+      res.end(JSON.stringify({encoding: 'base64', content: Buffer.from('env:\n  ALLOW_STACK_WORKFLOW_PRUNE: "yes"').toString('base64')}));
     } else if (url.pathname.endsWith('/cancel')) {
       assert.equal(req.method, 'POST'); res.writeHead(202); res.end('{}');
     } else if (url.pathname.endsWith('/attempts/2/jobs')) {

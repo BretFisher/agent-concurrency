@@ -3,3 +3,7 @@
 skip:
   - rule: untrusted_checkout_exec
     path: .github/workflows/reusable-ci.yaml
+  # This is the repository's own SHA-pinned experimental action, not an
+  # external Marketplace action. Creator verification is not applicable.
+  - rule: github_action_from_unverified_creator_used
+    path: .github/workflows/stack-prune.yaml

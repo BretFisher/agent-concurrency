@@ -1,18 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup } from '../src/cleanup.ts';
+import { prune } from '../src/prune.ts';
 import { policy } from '../src/policy.ts';
 import { summary } from '../src/summary.ts';
 import { pull as parsePull, run as parseRun } from '../src/api.ts';
 import type { Api, Config, Job, Pull, Run, Stack, Workflow } from '../src/model.ts';
 const sha = 'a'.repeat(40);
-const source = 'name: Unit Tests\nenv:\n  ALLOW_STACK_CLEANUP: "yes"\njobs: {}\n';
+const source = 'name: Unit Tests\nenv:\n  ALLOW_STACK_WORKFLOW_PRUNE: "yes"\njobs: {}\n';
 const pr = (number: number): Pull => ({number, state: 'open', head: {sha: `sha${number}`, ref: `branch${number}`, repo: {id: 1}}, stack: {number: 7, position: number, size: 3}});
 const run = (id: number, number: number, workflow = 9): Run => ({id, workflow_id: workflow, run_number: id, run_attempt: 1,
   event: 'pull_request', status: 'in_progress', conclusion: null, created_at: '2026-11-06T10:00:00Z',
   head_sha: `sha${number}`, head_branch: `branch${number}`, head_repository: {id: 1}, pull_requests: [{number}],
   html_url: `https://github.com/o/r/actions/runs/${id}`});
-const config = (): Config => ({repositoryId: 1, cleanupRunId: 100, event: 'pull_request', action: 'stacked', triggerPr: 1,
+const config = (): Config => ({repositoryId: 1, pruneRunId: 100, event: 'pull_request', action: 'stacked', triggerPr: 1,
   triggerRepoId: 1, defaultBranch: 'main', dryRun: false, warnMissing: false, serverUrl: 'https://github.com', repository: 'o/r'});
 class Fake implements Api {
   stackValue: Stack = {number: 7, base: {ref: 'main'}, pull_requests: [pr(1), pr(2), pr(3)]};
@@ -56,8 +56,8 @@ class Fake implements Api {
     if (!this.cancelled.includes(id)) this.cancelled.push(id);
   }
 }
-const execute = (api = new Fake(), change: Partial<Config> = {}) => cleanup(api, {...config(), ...change}, async () => {}, () => new Date('2026-11-06T10:00:11Z'));
-test('creation cancels lower runs in opted-in workflow, not cleanup or top', async () => {
+const execute = (api = new Fake(), change: Partial<Config> = {}) => prune(api, {...config(), ...change}, async () => {}, () => new Date('2026-11-06T10:00:11Z'));
+test('creation cancels lower runs in opted-in workflow, not prune or top', async () => {
   const api = new Fake(), report = await execute(api);
   assert.deepEqual(api.cancelled, [10, 20]); assert.deepEqual(report.errors, []);
   assert.ok(report.entries.every(e => e.outcome === 'finished: cancelled' && e.replacement.id === 30));
@@ -76,7 +76,7 @@ test('multiple opted-in workflows are handled independently', async () => {
   await execute(api); assert.deepEqual(api.cancelled, [10, 20, 11]);
 });
 for (const declaration of ['no', undefined, '${{ vars.ALLOW }}', 'YES', true]) test(`preserve policy ${String(declaration)}`, async () => {
-  const api = new Fake(); api.sourceValue = declaration === undefined ? 'name: No policy' : `env:\n  ALLOW_STACK_CLEANUP: ${JSON.stringify(declaration)}\n`;
+  const api = new Fake(); api.sourceValue = declaration === undefined ? 'name: No policy' : `env:\n  ALLOW_STACK_WORKFLOW_PRUNE: ${JSON.stringify(declaration)}\n`;
   const report = await execute(api); assert.deepEqual(api.cancelled, []); assert.equal(report.policies.length, 1);
 });
 test('missing warning is optional and does not alter eligibility', async () => {
@@ -84,7 +84,7 @@ test('missing warning is optional and does not alter eligibility', async () => {
   assert.match(summary(report, {...config(), warnMissing: true}), /Warning: 1/);
   assert.doesNotMatch(summary(report, config()), /Warning: 1/); assert.deepEqual(api.cancelled, []);
 });
-test('only stacked can initiate cleanup', async () => {
+test('only stacked can initiate prune', async () => {
   for (const change of [{action: 'opened'}, {action: 'synchronize'}, {event: 'workflow_dispatch'}]) {
     const api = new Fake(); await execute(api, change); assert.deepEqual(api.cancelled, []); assert.equal(api.calls.length, 0);
   }
@@ -115,7 +115,7 @@ test('changed lower workflow preserved', async () => {
 test('missing workflow source cannot authorize cancellation', async () => {
   const api = new Fake(); api.failSource = true; const report = await execute(api); assert.deepEqual(api.cancelled, []); assert.equal(report.errors.length, 1);
 });
-test('manual, unrelated, foreign, completed, and post-cleanup runs preserved', async () => {
+test('manual, unrelated, foreign, completed, and post-prune runs preserved', async () => {
   for (const change of [{event: 'workflow_dispatch'}, {pull_requests: [{number: 77}]}, {head_repository: {id: 2}},
       {status: 'completed', conclusion: 'success'}, {created_at: '2026-11-06T10:00:11Z'}, {head_branch: 'unrelated'}]) {
     const api = new Fake(); Object.assign(api.runValues.get(10)!, change); await execute(api); assert.deepEqual(api.cancelled, [20]);
@@ -171,8 +171,8 @@ test('summary contains trace links, attempt, reason, jobs, time and escaped text
   for (const detail of ['PR 1', 'branch1', 'sha1', 'attempt 1', 'Top run 30', '2026-11-06T10:00:11.000Z', 'Workflow opted in', 'Unit &lt;test&gt;', '/job/100', 'Observed job states']) assert.ok(text.includes(detail), detail);
 });
 test('invalid YAML and job-level variable never opt in', () => {
-  for (const text of ['env: [broken', 'env:\n  ALLOW_STACK_CLEANUP: yes\n  ALLOW_STACK_CLEANUP: no', 'env: "${{ vars.ALL }}"']) assert.equal(policy(text).value, 'invalid');
-  assert.equal(policy('jobs:\n  unit:\n    env:\n      ALLOW_STACK_CLEANUP: "yes"').value, 'missing');
+  for (const text of ['env: [broken', 'env:\n  ALLOW_STACK_WORKFLOW_PRUNE: yes\n  ALLOW_STACK_WORKFLOW_PRUNE: no', 'env: "${{ vars.ALL }}"']) assert.equal(policy(text).value, 'invalid');
+  assert.equal(policy('jobs:\n  unit:\n    env:\n      ALLOW_STACK_WORKFLOW_PRUNE: "yes"').value, 'missing');
 });
 test('malformed API shapes fail validation', () => {
   assert.throws(() => parsePull({number: 1})); assert.throws(() => parseRun({id: 1}));

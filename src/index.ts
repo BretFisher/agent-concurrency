@@ -1,7 +1,7 @@
 import * as core from '@actions/core';
 import { context } from '@actions/github';
 import { GitHubApi } from './api.ts';
-import { cleanup } from './cleanup.ts';
+import { prune } from './prune.ts';
 import { summary } from './summary.ts';
 import type { Config } from './model.ts';
 function yesNo(name: string): boolean {
@@ -14,7 +14,7 @@ async function main() {
   core.setSecret(token);
   const payload = context.payload;
   const config: Config = {
-    repositoryId: Number(payload.repository?.id), cleanupRunId: context.runId,
+    repositoryId: Number(payload.repository?.id), pruneRunId: context.runId,
     event: context.eventName, action: payload.action || '',
     triggerPr: Number(payload.pull_request?.number), triggerRepoId: Number(payload.pull_request?.head?.repo?.id),
     defaultBranch: String(payload.repository?.default_branch || ''),
@@ -23,12 +23,12 @@ async function main() {
     serverUrl: process.env.GITHUB_SERVER_URL || 'https://github.com',
     repository: `${context.repo.owner}/${context.repo.repo}`,
   };
-  const report = await cleanup(new GitHubApi(token, config.repository), config);
+  const report = await prune(new GitHubApi(token, config.repository), config);
   await core.summary.addRaw(summary(report, config)).write();
   // A single JSON line preserves the same trace in authenticated job logs.
-  core.info(`Stack cleanup report: ${JSON.stringify(report)}`);
+  core.info(`Stack prune report: ${JSON.stringify(report)}`);
   const missing = report.policies.filter(p => p.policy === 'missing');
-  if (config.warnMissing && missing.length) core.warning(`Missing ALLOW_STACK_CLEANUP (preserved): ${missing.map(p => p.workflow.path).join(', ')}`);
+  if (config.warnMissing && missing.length) core.warning(`Missing ALLOW_STACK_WORKFLOW_PRUNE (preserved): ${missing.map(p => p.workflow.path).join(', ')}`);
   for (const declaration of report.policies.filter(p => p.policy === 'invalid')) core.warning(`${declaration.workflow.path}: ${declaration.detail}`);
   core.setOutput('accepted-count', report.entries.filter(e => e.requestedAt).length);
   core.setOutput('pending-count', report.entries.filter(e => e.outcome === 'accepted; pending').length);

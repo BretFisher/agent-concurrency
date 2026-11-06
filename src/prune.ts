@@ -3,18 +3,18 @@ import type { Api, Config, Entry, Pull, Report, Run, Stack, Workflow } from './m
 import { policy } from './policy.ts';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
-export async function cleanup(api: Api, config: Config, wait: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)), now = () => new Date()): Promise<Report> {
-  const report: Report = {trigger: `${config.serverUrl}/${config.repository}/actions/runs/${config.cleanupRunId}`, policies: [], entries: [], notes: [], errors: []};
+export async function prune(api: Api, config: Config, wait: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)), now = () => new Date()): Promise<Report> {
+  const report: Report = {trigger: `${config.serverUrl}/${config.repository}/actions/runs/${config.pruneRunId}`, policies: [], entries: [], notes: [], errors: []};
   try {
     if (config.event !== 'pull_request' || config.action !== 'stacked') {
-      report.notes.push('Only pull_request.stacked initiates cleanup.'); return report;
+      report.notes.push('Only pull_request.stacked initiates pruning.'); return report;
     }
     if (config.triggerRepoId !== config.repositoryId) {
       report.notes.push('The triggering PR is not from this repository.'); return report;
     }
-    const current = await api.run(config.cleanupRunId);
+    const current = await api.run(config.pruneRunId);
     const cutoff = Date.parse(current.created_at);
-    if (!Number.isFinite(cutoff)) throw new Error('Cleanup run has no valid creation time.');
+    if (!Number.isFinite(cutoff)) throw new Error('Prune run has no valid creation time.');
     const trigger = await api.pull(config.triggerPr);
     if (trigger.state !== 'open' || !trigger.stack || trigger.head.repo.id !== config.repositoryId) {
       report.notes.push('The triggering PR is not an open member of a same-repository stack.'); return report;
@@ -125,7 +125,7 @@ async function inspectWorkflow(api: Api, config: Config, report: Report, stack: 
       report.notes.push(`${workflow.name}: run ${candidate.id} changed or was rerun; preserved.`); continue;
     }
     const entry: Entry = {workflow, lower: pr, run: fresh, replacement: freshTop,
-      reason: 'Workflow opted in; current top contains all lower heads and has a matching run; this lower run predates cleanup.',
+      reason: 'Workflow opted in; current top contains all lower heads and has a matching run; this lower run predates the prune invocation.',
       outcome: 'not requested; validation interrupted', jobs: await api.jobs(fresh.id, fresh.run_attempt)};
     report.entries.push(entry);
     if (fresh.status === 'completed') { entry.outcome = `already finished: ${fresh.conclusion}`; continue; }

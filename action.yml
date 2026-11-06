@@ -1,4 +1,4 @@
-name: Stack Cleanup
+name: Stack Prune
 description: Cancel opted-in lower-PR workflow runs after PRs join a native stack.
 inputs:
   token:

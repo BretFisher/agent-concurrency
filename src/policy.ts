@@ -9,9 +9,9 @@ export function policy(source: string): Policy {
   const env = (data as Record<string, unknown>).env;
   if (env === undefined) return {value: 'missing', detail: 'No workflow-level opt-in; preserved.'};
   if (!env || typeof env !== 'object' || Array.isArray(env)) return {value: 'invalid', detail: 'Workflow env must be a literal mapping.'};
-  const value = (env as Record<string, unknown>).ALLOW_STACK_CLEANUP;
+  const value = (env as Record<string, unknown>).ALLOW_STACK_WORKFLOW_PRUNE;
   if (value === undefined) return {value: 'missing', detail: 'No workflow-level opt-in; preserved.'};
   if (value === 'yes') return {value, detail: 'Explicit workflow-level opt-in.'};
   if (value === 'no') return {value, detail: 'Explicitly excluded.'};
-  return {value: 'invalid', detail: 'ALLOW_STACK_CLEANUP must be the literal string yes or no; preserved.'};
+  return {value: 'invalid', detail: 'ALLOW_STACK_WORKFLOW_PRUNE must be the literal string yes or no; preserved.'};
 }

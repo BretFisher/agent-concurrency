@@ -35,14 +35,14 @@ stack-cancel:
 	@test -n "$(RUN_ID)" || (echo 'Use make stack-cancel RUN_ID=<top-workflow-run-id>'; exit 1)
 	GITHUB_REPOSITORY="$(REPO)" GITHUB_RUN_ID="$(RUN_ID)" STACK_CANCEL_DRY_RUN="$(DRY_RUN)" bash scripts/cancel-lower-stack-runs.sh
 
-.PHONY: stack-probe-delay stack-cleanup-enable stack-cleanup-disable
+.PHONY: stack-probe-delay stack-prune-enable stack-prune-disable
 PROBE_SECONDS ?= 0
 stack-probe-delay:
 	gh variable set STACK_PROBE_SECONDS --body "$(PROBE_SECONDS)"
-stack-cleanup-enable:
-	gh variable set STACK_CLEANUP_ENABLED --body true
-stack-cleanup-disable:
-	gh variable set STACK_CLEANUP_ENABLED --body false
+stack-prune-enable:
+	gh variable set STACK_PRUNE_ENABLED --body true
+stack-prune-disable:
+	gh variable set STACK_PRUNE_ENABLED --body false
 
 # TypeScript action development. The bundled action needs no runtime install.
 .PHONY: action-install action-typecheck action-test action-build action-check
@@ -56,3 +56,9 @@ action-build:
 	npm run build
 action-check:
 	npm run check
+
+# GitHub accepted these activities in the live tests. Keep the schema
+# exclusions exact so other workflow errors still fail this check.
+.PHONY: action-workflow-check
+action-workflow-check:
+	actionlint -ignore '^invalid activity type "stacked"' .github/workflows/stack-prune.yaml .github/workflows/stack-if-probe.yaml .github/workflows/stack-cancel.yaml

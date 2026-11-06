@@ -27,7 +27,7 @@ export interface Api {
   cancel(run: number): Promise<void>;
 }
 export interface Config {
-  repositoryId: number; cleanupRunId: number; event: string; action: string;
+  repositoryId: number; pruneRunId: number; event: string; action: string;
   triggerPr: number; triggerRepoId: number; defaultBranch: string;
   policyRef?: string; dryRun: boolean; warnMissing: boolean;
   serverUrl: string; repository: string;

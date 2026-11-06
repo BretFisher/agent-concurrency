@@ -32057,29 +32057,29 @@ function policy(source) {
   const env = data.env;
   if (env === void 0) return { value: "missing", detail: "No workflow-level opt-in; preserved." };
   if (!env || typeof env !== "object" || Array.isArray(env)) return { value: "invalid", detail: "Workflow env must be a literal mapping." };
-  const value = env.ALLOW_STACK_CLEANUP;
+  const value = env.ALLOW_STACK_WORKFLOW_PRUNE;
   if (value === void 0) return { value: "missing", detail: "No workflow-level opt-in; preserved." };
   if (value === "yes") return { value, detail: "Explicit workflow-level opt-in." };
   if (value === "no") return { value, detail: "Explicitly excluded." };
-  return { value: "invalid", detail: "ALLOW_STACK_CLEANUP must be the literal string yes or no; preserved." };
+  return { value: "invalid", detail: "ALLOW_STACK_WORKFLOW_PRUNE must be the literal string yes or no; preserved." };
 }
 
-// src/cleanup.ts
+// src/prune.ts
 var message = (error2) => error2 instanceof Error ? error2.message : String(error2);
-async function cleanup(api, config, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now = () => /* @__PURE__ */ new Date()) {
-  const report = { trigger: `${config.serverUrl}/${config.repository}/actions/runs/${config.cleanupRunId}`, policies: [], entries: [], notes: [], errors: [] };
+async function prune(api, config, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), now = () => /* @__PURE__ */ new Date()) {
+  const report = { trigger: `${config.serverUrl}/${config.repository}/actions/runs/${config.pruneRunId}`, policies: [], entries: [], notes: [], errors: [] };
   try {
     if (config.event !== "pull_request" || config.action !== "stacked") {
-      report.notes.push("Only pull_request.stacked initiates cleanup.");
+      report.notes.push("Only pull_request.stacked initiates pruning.");
       return report;
     }
     if (config.triggerRepoId !== config.repositoryId) {
       report.notes.push("The triggering PR is not from this repository.");
       return report;
     }
-    const current = await api.run(config.cleanupRunId);
+    const current = await api.run(config.pruneRunId);
     const cutoff = Date.parse(current.created_at);
-    if (!Number.isFinite(cutoff)) throw new Error("Cleanup run has no valid creation time.");
+    if (!Number.isFinite(cutoff)) throw new Error("Prune run has no valid creation time.");
     const trigger = await api.pull(config.triggerPr);
     if (trigger.state !== "open" || !trigger.stack || trigger.head.repo.id !== config.repositoryId) {
       report.notes.push("The triggering PR is not an open member of a same-repository stack.");
@@ -32198,7 +32198,7 @@ async function inspectWorkflow(api, config, report, stack, top, workflow, cutoff
       lower: pr,
       run: fresh,
       replacement: freshTop,
-      reason: "Workflow opted in; current top contains all lower heads and has a matching run; this lower run predates cleanup.",
+      reason: "Workflow opted in; current top contains all lower heads and has a matching run; this lower run predates the prune invocation.",
       outcome: "not requested; validation interrupted",
       jobs: await api.jobs(fresh.id, fresh.run_attempt)
     };
@@ -32248,9 +32248,9 @@ function summary2(report, config) {
   }).join("\n");
   const policyRows = report.policies.filter((p) => p.policy !== "missing" || config.warnMissing).map(({ workflow, policy: policy2, detail }) => `<tr><td>${link(`${root}/blob/${report.policySha}/${workflow.path}`, workflow.name)}</td><td>${esc(policy2)}</td><td>${esc(detail)}</td></tr>`).join("\n");
   const missing = report.policies.filter((p) => p.policy === "missing").length;
-  return `# Stack cleanup
+  return `# Stack prune
 
-${link(report.trigger, "Cleanup invocation")} \xB7 ${esc(config.event)}.${esc(config.action)} \xB7 ${esc(config.dryRun ? "Dry run" : "Cancellation enabled")} \xB7 Joining ${link(`${root}/pull/${config.triggerPr}`, `PR ${config.triggerPr}`)}
+${link(report.trigger, "Prune invocation")} \xB7 ${esc(config.event)}.${esc(config.action)} \xB7 ${esc(config.dryRun ? "Dry run" : "Cancellation enabled")} \xB7 Joining ${link(`${root}/pull/${config.triggerPr}`, `PR ${config.triggerPr}`)}
 
 ` + (report.stack ? `Stack ${esc(report.stack.number)} \xB7 Top ${link(`${root}/pull/${report.stack.pull_requests.at(-1).number}`, `PR ${report.stack.pull_requests.at(-1).number}`)}
 
@@ -32258,7 +32258,7 @@ ${link(report.trigger, "Cleanup invocation")} \xB7 ${esc(config.event)}.${esc(co
 
 ` : "") + `## Cancellation requests and observed outcomes
 
-A request being accepted does not prove a run or job stopped. Job states below are observations, not an assertion that cleanup caused every cancellation. Completed jobs are not canceled retroactively.
+A request being accepted does not prove a run or job stopped. Job states below are observations, not an assertion that prune caused every cancellation. Completed jobs are not canceled retroactively.
 
 ` + (rows ? `<table><tr><th>Workflow</th><th>Lower PR / branch / commit</th><th>Target</th><th>Replacement</th><th>Outcome / request time</th><th>Reason / jobs</th></tr>${rows}</table>
 
@@ -32268,7 +32268,7 @@ Missing opt-in means no. ${missing} workflows have no declaration.
 
 ` + (policyRows ? `<table><tr><th>Workflow</th><th>Opt-in</th><th>Decision</th></tr>${policyRows}</table>
 
-` : "") + (config.warnMissing && missing ? `Warning: ${missing} workflows have no ALLOW_STACK_CLEANUP declaration; their runs were preserved.
+` : "") + (config.warnMissing && missing ? `Warning: ${missing} workflows have no ALLOW_STACK_WORKFLOW_PRUNE declaration; their runs were preserved.
 
 ` : "") + `## Notes
 
@@ -32292,7 +32292,7 @@ async function main() {
   const payload = context2.payload;
   const config = {
     repositoryId: Number(payload.repository?.id),
-    cleanupRunId: context2.runId,
+    pruneRunId: context2.runId,
     event: context2.eventName,
     action: payload.action || "",
     triggerPr: Number(payload.pull_request?.number),
@@ -32304,11 +32304,11 @@ async function main() {
     serverUrl: process.env.GITHUB_SERVER_URL || "https://github.com",
     repository: `${context2.repo.owner}/${context2.repo.repo}`
   };
-  const report = await cleanup(new GitHubApi(token, config.repository), config);
+  const report = await prune(new GitHubApi(token, config.repository), config);
   await summary.addRaw(summary2(report, config)).write();
-  info(`Stack cleanup report: ${JSON.stringify(report)}`);
+  info(`Stack prune report: ${JSON.stringify(report)}`);
   const missing = report.policies.filter((p) => p.policy === "missing");
-  if (config.warnMissing && missing.length) warning(`Missing ALLOW_STACK_CLEANUP (preserved): ${missing.map((p) => p.workflow.path).join(", ")}`);
+  if (config.warnMissing && missing.length) warning(`Missing ALLOW_STACK_WORKFLOW_PRUNE (preserved): ${missing.map((p) => p.workflow.path).join(", ")}`);
   for (const declaration of report.policies.filter((p) => p.policy === "invalid")) warning(`${declaration.workflow.path}: ${declaration.detail}`);
   setOutput("accepted-count", report.entries.filter((e) => e.requestedAt).length);
   setOutput("pending-count", report.entries.filter((e) => e.outcome === "accepted; pending").length);
