@@ -27,7 +27,7 @@ Trunk was `main` at `f9e97cf8db6e3b5c3ba53c10d24235380db5aa67`. Both heads forme
 
 ## Before deployment
 
-The [lower cheap suite](https://github.com/BretFisher/agent-concurrency/actions/runs/42159140860) and [upper cheap suite](https://github.com/BretFisher/agent-concurrency/actions/runs/42159149084) passed. The deployment API returned an empty list for `stack-e2e`.
+The [lower-PR workflow run](https://github.com/BretFisher/agent-concurrency/actions/runs/42159140860) and [upper-PR workflow run](https://github.com/BretFisher/agent-concurrency/actions/runs/42159149084) passed. The deployment API returned an empty list for `stack-e2e`.
 
 `make stack-merge STACK=8` submitted the native asynchronous stack merge. GitHub rejected it:
 
@@ -80,7 +80,7 @@ The top PR is advanced by this evidence commit before attempting the stale-evide
 
 ## A new head invalidated the earlier success
 
-PR #7 advanced to `d717ee339c8e4963d121021ec2ff775554c6898b`. The [new cheap suite 42159741268](https://github.com/BretFisher/agent-concurrency/actions/runs/42159741268) passed. Deployment **7591949719** still had `success` for the old `3ea9b74` SHA, and no deployment existed for the new head.
+PR #7 advanced to `d717ee339c8e4963d121021ec2ff775554c6898b`. The [new workflow run 42159741268](https://github.com/BretFisher/agent-concurrency/actions/runs/42159741268) passed. Deployment **7591949719** still had `success` for the old `3ea9b74` SHA, and no deployment existed for the new head.
 
 A third `make stack-merge STACK=8` attempt was rejected with `Missing successful active stack-e2e deployment.` Nothing merged. This proves that the earlier top deployment did not authorize the new head in this native stack.
 
@@ -104,7 +104,7 @@ The workflow supplied a branch reference, but accepted the deployment only becau
 
 ## Corrected binding also rejected a stale head
 
-The top advanced to `2caae5bee954f91ae91570b875ae504ae02d09b7`. Its [cheap suite 42160837868](https://github.com/BretFisher/agent-concurrency/actions/runs/42160837868) passed. Deployment **7592086904** still had `success` for the previous `b6065a7` commit.
+The top advanced to `2caae5bee954f91ae91570b875ae504ae02d09b7`. Its [workflow run 42160837868](https://github.com/BretFisher/agent-concurrency/actions/runs/42160837868) passed. Deployment **7592086904** still had `success` for the previous `b6065a7` commit.
 
 A direct call to `PUT /repos/BretFisher/agent-concurrency/pulls/7/merge-async` specified the new exact SHA, `merge_action: direct_merge`, `merge_method: squash`, and `bypass_rules: false`. Request UUID **7f1dde52-8876-4411-b5b1-c69e667d6da1** returned `failed` with `Missing successful active stack-e2e deployment.` The stack API confirmed both PRs remained open.
 

@@ -15,11 +15,11 @@ This is execution evidence, not just a YAML review. The repository was created u
 | New stack tip | [Run 42156087623](https://github.com/BretFisher/agent-concurrency/actions/runs/42156087623) | Former tip PR #3 canceled after PR #5 extended native stack #4. Simulated setup started at 03:23:20Z; cancellation reached the job at 03:24:26Z. |
 | Old commit within stack | [Run 42156278374](https://github.com/BretFisher/agent-concurrency/actions/runs/42156278374) | PR #5's earlier head canceled after its next commit. |
 | Superseded pending commit | [Run 42156499997](https://github.com/BretFisher/agent-concurrency/actions/runs/42156499997) | Canceled while later edits advanced PR #5. |
-| Lower-layer event | [Run 42156310500](https://github.com/BretFisher/agent-concurrency/actions/runs/42156310500) | API validation completed; `Current Tip Suite` was skipped. It did not enter the shared stack group. This green run does not mean its app was tested. |
-| Stale opt-in SHA | [Run 42156637734](https://github.com/BretFisher/agent-concurrency/actions/runs/42156637734) | Failed API validation; suite skipped. Requested old SHA `0449ee3`, while current head was `760a69b`. |
-| Lower-layer opt-in | [Run 42156640099](https://github.com/BretFisher/agent-concurrency/actions/runs/42156640099) | Failed API validation for PR #2, position 1 of 3; suite skipped. |
-| Newest automatic full suite | [Run 42156629947](https://github.com/BretFisher/agent-concurrency/actions/runs/42156629947) | All four jobs passed for top head `760a69b`: API validation, lint, unit/build, and HTTP E2E. |
-| Valid opt-in full suite | [Run 42156715175](https://github.com/BretFisher/agent-concurrency/actions/runs/42156715175) | All four jobs passed for exact top head `760a69b`. The request used workflow ref `demo/completion` to test the updated workflow before merging it to `main`. |
+| Lower-layer event | [Run 42156310500](https://github.com/BretFisher/agent-concurrency/actions/runs/42156310500) | API validation completed; the reusable-workflow call named `Current Tip Suite` was skipped. It did not enter the shared stack group. This successful workflow run does not mean its app was tested. |
+| Stale opt-in SHA | [Run 42156637734](https://github.com/BretFisher/agent-concurrency/actions/runs/42156637734) | Failed API validation; validation call skipped. Requested old SHA `0449ee3`, while current head was `760a69b`. |
+| Lower-layer opt-in | [Run 42156640099](https://github.com/BretFisher/agent-concurrency/actions/runs/42156640099) | Failed API validation for PR #2, position 1 of 3; validation call skipped. |
+| Newest automatic workflow run | [Run 42156629947](https://github.com/BretFisher/agent-concurrency/actions/runs/42156629947) | All four jobs passed for top head `760a69b`: API validation, lint, unit/build, and HTTP E2E. |
+| Valid opt-in workflow run | [Run 42156715175](https://github.com/BretFisher/agent-concurrency/actions/runs/42156715175) | All four jobs passed for exact top head `760a69b`. The request used workflow ref `demo/completion` to test the updated workflow before merging it to `main`. |
 | Automatic E2E disabled | [Run 42157006772](https://github.com/BretFisher/agent-concurrency/actions/runs/42157006772) | API validation, lint, and unit/build passed; E2E was skipped with `E2E_MODE=opt-in`. |
 
 ## Final state
@@ -41,7 +41,7 @@ Required status check "Current Tip Suite / Unit Test And Build" is expected.
 Stack merges are atomic, so nothing was merged.
 ```
 
-The API then confirmed all three PRs were still open. The top had a passing automatic suite. The lower-layer gated runs had skipped the suite, which did not create the required named unit/build checks for those layers. Thus a passing tip did not satisfy this per-layer requirement. The temporary rule was removed before the teaching stack was merged. This is a test of one required-check configuration, not all protection rules.
+The API then confirmed all three PRs were still open. The top had a passing automatic workflow run. The lower-layer workflow runs skipped the reusable-workflow call, so they did not create the required unit/build check runs for those layers. Thus a passing tip did not satisfy this per-layer requirement. The temporary rule was removed before the teaching stack was merged. This is a test of one required-check configuration, not all protection rules.
 
 ## Native stack and full diff
 

@@ -1,112 +1,92 @@
 # Agent Concurrency Management
 
-Techniques for limiting duplicate, redundant, and outdated CI runs when agents rapidly create and update pull requests.
+Agents can create PRs and commit updates faster than CI finishes. Each event can start another workflow run, leaving obsolete validation jobs active at the same time. Small PRs can help people review changes, but stacks add more cumulative revisions and update events.
 
-Small PRs help people review one concern at a time. An agent can create several PRs before the first test finishes. Each PR event can start CI. Three layers with three updates can start nine suites. A native stack does not, by itself, reduce those starts.
+The cost problem includes lint, unit tests, integration tests, E2E, CVE scans, and repeated runner setup. The aim is to stop redundant work, not to prevent every job from starting. Brief overlap can be acceptable; cancellation timing is not guaranteed.
 
-This public teaching repo uses a small Go HTTP service, unit tests, and a real HTTP integration test. The E2E job adds **90 seconds of simulated setup** before its HTTP assertion. The delay exists to make cancellation visible. It does not prove correctness. Each job has a time limit. No cloud resources or deployment are needed.
+## Goals
 
-## Methods and source review
+1. Cancel obsolete job runs for new commits within the same PR.
+2. Cancel superseded job runs for all PR commits in the stack except the latest commit on the top PR.
 
-- [First-party implementation guidelines](docs/ci-methodology.md): per-PR cancellation first, then current-state stack selection, scoped cleanup design, and separate merge enforcement.
-- [Four-project source study](docs/ci-source-study.md): exact source revisions, algorithms, tests, licenses, and failure limits. It compares techniques without adding the projects as runtime dependencies.
+These are design goals. The comparison below separates tested behavior from proposed behavior. GitHub's cancellation API targets a **workflow run**, which contains job runs; canceling that workflow run can stop its jobs together.
 
-These documents cover redundant validation across lint, unit, integration, E2E, CVE, and setup work. They propose no new executable cleanup engine and preserve the existing live-test limits.
+## Compare the techniques
 
-## Local checks
+| Technique | What it does | Main benefit | Main limit | Status in this repo |
+| --- | --- | --- | --- | --- |
+| Native concurrency | Cancels older workflow runs or job runs within a stable group | Simple first step for ordinary PR updates; can stop many validation jobs together | Scheduling order is not current-commit order. A standalone-to-stack key change leaves earlier runs outside the new group. | Per-PR and selected stack-tip supersession tested live |
+| Current-state API cleanup | Queries current membership and heads, then cancels proven obsolete runs in selected workflows | Can cover lower layers, old commits, equivalent duplicates, and earlier standalone-key runs once membership is known | Needs explicit scope, pagination, fresh reads, retries, and a runner. Unknown membership must not cause guessed cancellations. | Proposed method; no cleanup engine implemented |
+| Required-deployment merge gate | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Negative cases and standalone merging tested; native stack inheritance not reproduced |
 
-Requires Go 1.27 and Make. No module dependencies. Nothing here installs local tools.
+Automatic and opt-in triggering are separate policy choices. Either can be combined with selection, cancellation, and merge controls.
 
-```sh
-make check   # gofmt check, go vet, race tests, build, HTTP test
-make lint
-make test
-make build
-make e2e     # no simulated delay by default
-make e2e SIMULATED_E2E_DELAY=90s
-make run     # GET http://localhost:8080/?name=Bret
+## Native concurrency: start with one PR
+
+Use a stable workflow-and-PR key for PR validation. A new run in that group requests cancellation of the previous run. Do not put the commit SHA in the group: each commit would then get its own group and avoid supersession.
+
+This fragment teaches the grouping mechanism for a PR-triggered workflow:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 ```
 
-The basic lint checks use `gofmt` and `go vet` from Go. The HTTP test checks status, body, and content type through a local TCP server.
+Separate workflow identities preserve distinct validation work. Releases and state-changing deployments need their own deliberate concurrency policy. A late event or rerun can still arrive out of order; native concurrency alone does not establish which commit is current. [GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-## Approach 1: cancel superseded automatic CI
+The stack example adds a stack-wide group only after a tip check. Only runs that pass the tip check enter that group. The check and job scheduling are not atomic. This reduced obsolete work in the tested sequence, but did not solve every transition: a run that started before its PR joined the stack used a different key. [Cancellation evidence](docs/evidence.md).
 
-[Automatic CI](.github/workflows/automatic.yaml) starts on PR events, including draft PRs. It has a stable workflow-and-PR concurrency key. A new event for that PR cancels its previous run. The key must not include the commit SHA.
+## Current-state cleanup: select before canceling
 
-A separate read-only job queries the current PR through the API. It rejects a closed PR, an old head SHA, or a lower stack layer. Only a valid current tip can call [Shared CI](.github/workflows/reusable-ci.yaml). The call has a workflow-and-stack concurrency key, with a separate standalone PR fallback. The reusable workflow runs lint and unit/build jobs in parallel. E2E waits for both.
+A proposed metadata-only cleanup workflow would:
 
-The two scopes have different purposes. The PR key cancels old commits within each PR. The suite key cancels a former tip when a new tip reaches the same stack group. Lower-layer events cannot enter the shared group and cancel the tip. The called workflow has no duplicate concurrency key that could cancel its caller.
+1. Load an explicit allowlist of validation workflows and exclusions.
+2. Read current PR identities, complete native membership, head SHAs, trunk SHA, and linear history.
+3. Select the desired current run separately for each validation workflow and execution contract.
+4. Recheck state before canceling old-head, lower-layer, or equivalent duplicate runs. Include earlier standalone-key runs belonging to verified members.
+5. Confirm cancellation outcomes and retry bounded failures. Ensure the desired current validation starts through its automatic trigger path.
 
-**Limits:** API validation and scheduling are not atomic. A PR can stop being the tip after validation. An old standalone run has a different key from its later stack run. A new top can start E2E while the stack is still being built. Cancellation cannot recover compute already used. GitHub concurrency order is queue order, not commit order. This example reduces redundant work; it does not guarantee that all obsolete jobs stop in every race. A stricter design needs custom automation that queries current membership and heads and cancels obsolete runs through the Actions API. It can run in Actions; no separate server is required.
+One current run for lint and another for scanning can both be required. Keeping one arbitrary run across the repository would discard validation. Exclude cleanup jobs, final reporters, releases, and unrelated PRs. A privileged canceller must not execute PR code or PR-controlled artifacts.
 
-## Approach 2: request E2E after the stack is complete
+Before native membership exists, cross-PR cancellation needs a trusted declared grouping. Timing, a shared author, or similar branch names do not prove that PRs belong together. When identity or membership is unknown, leave runs untouched and retry. Runner saturation and API failures can delay cleanup; measure overlap instead of promising a fixed cancellation time.
 
-Set this repository variable to keep cheap automatic checks and stop automatic E2E starts:
+The [implementation guidelines](docs/ci-methodology.md) describe the proposed algorithm, permissions, race cases, and acceptance tests. The [source study](docs/ci-source-study.md) examines four existing implementations without adding them as runtime dependencies.
 
-```sh
-make e2e-mode
-```
+## Choose when validation starts
 
-After creating or rebasing the full stack, request E2E for its current top and exact SHA:
+| Trigger policy | Benefit | Trade-off |
+| --- | --- | --- |
+| Automatic | Starts validation as relevant PR or commit events arrive; avoids a forgotten manual request | Temporary tips can start work before the stack is complete. Selection and cancellation must follow current state. |
+| Opt-in | Delays selected work until an explicit request, such as after the agent finishes creating a stack | A missing request leaves validation undone. New commits or rebases need fresh evidence and another request. |
 
-```sh
-make e2e-request PR=5 # replace 5 with the current top PR
-make demo-status
-```
+This choice can apply to every selected validation category. The current opt-in example uses E2E to demonstrate exact-revision requests. Opt-in triggering is not a cancellation mechanism or merge authorization by itself. A dispatched workflow does not automatically satisfy required PR status checks. [GitHub required-check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 
-[Opt In E2E](.github/workflows/opt-in.yaml) rejects stale SHAs and lower layers. New commits or rebases need a new request with the new SHA. A previous manual run is evidence for its recorded SHA only. It is not a required PR check and does not automatically become invalid when a later PR event occurs. Revalidate before merging. Draft status alone does not suppress Actions.
+## Validate the combined change
 
-Restore automatic E2E with:
+Stack-tip validation must cover the full net change from trunk to the exact current top head. A layer's PR changed-files API can omit lower-layer files. The demo records a full-history `git diff BASE...HEAD` and tests an explicit head SHA. [Full-stack diff evidence](docs/evidence.md#native-stack-and-full-diff).
 
-```sh
-make automatic-mode
-```
+If a lower PR changes before the top is rebased, that top does not represent the complete current stack. Do not certify it as the combined change. Content equality is also a separate question: the same Git tree does not prove equivalent validation across toolchains, event inputs, base revisions, environments, or changing vulnerability data.
 
-Both modes remain visible for teaching. Use one expensive-job policy in production. Do not run both suites for the same SHA unless comparing them.
+For the intended tip-only validation mode, the chosen policy is **whole-stack-only merging**. This policy is not implemented or proven here. GitHub natively allows merging a selected PR and its lower prefix; it does not require the complete stack. A successful top test is not proof that every intermediate prefix is safe to merge. [Native merge scope](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-apis-and-webhooks).
 
-## Full stack diff
+## Merge enforcement: preserve the failed result
 
-The lint job checks out the exact head with full history. For a native stack it uses `stack.base.sha`; for an ordinary PR it uses `base.sha`. It prints `git diff BASE...HEAD` and the changed files in the job summary. This includes lower-layer changes. A PR changed-files API call can show only that layer. This example lints all Go packages, so a path filter cannot hide a needed check. A diff-aware tool should consume the full net diff.
+GitHub [documents required-deployment inheritance](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests) for lower PRs in a linear stack. This repo did not reproduce that behavior:
 
-## Reproduce the demos
+- Missing, failed, and stale deployment evidence blocked merging.
+- A canceled E2E workflow produced deployment failure.
+- An exact top SHA passed E2E and had an active successful deployment, but the full native stack merge remained blocked by the lower layer.
+- Standalone PRs passed the same active gate and merged without bypass.
 
-Requires an authenticated `gh` with native `gh stack` support. Use a fork or a disposable teaching repo with Actions enabled. The demo creates public PRs. Run local checks before commits.
+The experiment keeps per-layer cheap checks to isolate deployment behavior. That configuration is not a general requirement for a future tip-only cost policy. A skipped job can report success without testing; copying successful statuses to lower commits would not establish validation.
 
-Before the automatic demos, run `make automatic-mode`. After all demos, run `make e2e-mode` to avoid automatic expensive starts.
+Read the [deployment evidence](docs/deployment-evidence.md) and [detailed gate walkthrough](docs/required-deployment.md). The rule remains active. The two failed deployment-demo PRs are retained for inspection. This is not a proven stack-wide merge solution or proof that GitHub can never provide one.
 
-1. **Ordinary PR:** create a branch, commit a small documentation change, push, and open a draft PR. Wait until the simulated E2E step starts. Push a second commit. Verify the old run is canceled and the new run passes.
-2. **Native stack:** on `main`, run `gh stack init demo/notes`. Add `docs/demo-notes.md`, commit, and run `gh stack submit --auto`. Then `gh stack add demo/example`, add `docs/demo-example.md`, commit, and submit again. Verify membership with `gh stack view --json` and `gh api repos/{owner}/{repo}/pulls/PR`. Wait for the two-layer tip to start E2E. Run `gh stack add demo/completion`, add `docs/demo-completion.md`, commit, and submit again. This new tip should cancel the former tip through the shared stack group. Then push a new commit to the current top with `gh stack push` to test old-commit cancellation within the stack. Verify cancellation and a passing newest run. Trigger a lower-layer event by editing its PR title; verify its suite is skipped. The top run's diff must list both files.
-3. **Opt-in:** set `E2E_MODE=opt-in`, push a top commit, and verify automatic E2E is skipped. Dispatch `opt-in.yaml` as above. Verify the HTTP E2E passes. Dispatch an earlier SHA and a lower PR; verify each is rejected before tests start.
-4. Close or merge demo PRs when done. Native `gh stack merge TOP --yes --squash` merges the selected PR and all lower layers. Use `gh stack merge --help` for current flags. Confirm every resulting PR state.
+## What the demo proves
 
-[Observed run evidence](docs/evidence.md) records what was actually tested. Reproduction steps describe expected behavior until supported by that evidence.
+A small Go HTTP application supplies real response assertions. A clearly labeled 90-second setup delay makes selected cancellation cases visible; the delay proves no application behavior. The deployment experiment uses an ephemeral runner and records the tested revision; it deploys no persistent external service.
 
-## Approach 3: enforce full-stack E2E with a required deployment
-
-GitHub documents deployment inheritance for lower layers in a linear native stack. **This live test did not reproduce that inheritance:** the top deployment passed, but the full stack merge remained blocked. Missing, failed, canceled, and stale deployment evidence was blocked correctly. The [setup and walkthrough](docs/required-deployment.md) explains the environment, active ruleset, exact-SHA deployment API, read-only tests, and trusted reporting boundary. [Live evidence](docs/deployment-evidence.md) records what was actually observed.
-
-```sh
-make deployment-setup                # admin: create environment and active ruleset
-make deployment-request PR=TOP_PR    # request the current exact top SHA
-make deployment-state
-make deployment-status DEPLOYMENT=ID
-make stack-merge STACK=STACK_NUMBER
-```
-
-Deployment mode runs real cheap checks on every PR. Expensive HTTP E2E runs once on explicit request. The deployment is simulated on an ephemeral runner; the HTTP assertions are real. A separate API-only workflow posts success after the E2E source workflow has completed successfully and the stack still matches. Failed or canceled tests cannot report a successful deployment. The rule remained active during every merge attempt. Do not treat this as a proven stack-wide merge solution.
-
-## Merge protection and security
-
-The earlier status-check example does not enforce stack-wide E2E. The required-deployment example above adds a separate enforcement rule. GitHub evaluates required checks for every layer. A job skipped by an `if` condition can report success without testing that layer. A canceled check can prevent a layer from merging. The live [required-check experiment](docs/evidence.md#required-check-experiment) confirmed that a passing tip did not satisfy the required unit/build check for lower layers. Do not mark a skipped top-only job as the sole safety check, copy green statuses to lower commits, or assume a dispatched workflow satisfies PR required checks. The current deployment experiment requires two cheap checks per layer; this is a demo setting, not a general requirement for a future tip-only policy. Such a policy needs separately proven merge enforcement for the exact validated change. Merge queue runs need their own `merge_group` workflow and concurrency scope; a queue does not promise one build per stack. Merge queues are outside this demo.
-
-Workflows start with no permissions. API validation gets PR read permission; test jobs get contents read permission. Test code has no write token. Checkout does not retain credentials. External actions are pinned to release SHAs at least seven days old. Review and update pins regularly. `.poutine.yml` records one scoped exception: the test workflow intentionally executes PR code with read-only access and no secrets. Go caching is disabled because there are no dependencies or `go.sum`; this avoids a cache setup cost in a small example. Job time limits bound failures and the simulated wait. Multi-line shell steps stop on errors and unset values.
-
-## Sources
-
-- [GitHub: stack CI metadata and tip conditions](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/optimizing-ci-for-stacked-pull-requests)
-- [GitHub: stack APIs and webhooks](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-apis-and-webhooks)
-- [GitHub: stack merge requirements](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests)
-- [GitHub: required check events and skipped jobs](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
-- [GitHub: concurrency and ordering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+Validation runs with read-only access. Separate API-only reporting checks the completed result and current revision before writing deployment status. This keeps deployment-write access away from PR code. Broader metadata cleanup and whole-stack-only merge enforcement remain design work, not hidden features of the current workflows.
 
 MIT license. See [LICENSE](LICENSE).
