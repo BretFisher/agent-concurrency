@@ -1,5 +1,7 @@
 # Test evidence
 
+This page records the earlier cancellation and status-check demo. The later [deployment-gate evidence](deployment-evidence.md) describes the current repository settings.
+
 Test date: 2026-11-05 (America/New_York). GitHub logs use UTC on November 6.
 
 This is execution evidence, not just a YAML review. The repository was created under the authenticated `BretFisher` account. Local checkout: `/Users/bret/code/github/bretfisher/agent-concurrency`.

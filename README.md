@@ -76,7 +76,7 @@ Before the automatic demos, run `make automatic-mode`. After all demos, run `mak
 
 ## Approach 3: enforce full-stack E2E with a required deployment
 
-A required deployment can cover lower layers in a linear native stack. This differs from ordinary required status checks. The [setup and walkthrough](docs/required-deployment.md) explains the environment, active ruleset, exact-SHA deployment API, read-only tests, and trusted reporting boundary. [Live evidence](docs/deployment-evidence.md) records what was actually observed.
+GitHub documents deployment inheritance for lower layers in a linear native stack. **This live test did not reproduce that inheritance:** the top deployment passed, but the full stack merge remained blocked. Missing, failed, canceled, and stale deployment evidence was blocked correctly. The [setup and walkthrough](docs/required-deployment.md) explains the environment, active ruleset, exact-SHA deployment API, read-only tests, and trusted reporting boundary. [Live evidence](docs/deployment-evidence.md) records what was actually observed.
 
 ```sh
 make deployment-setup                # admin: create environment and active ruleset
@@ -86,7 +86,7 @@ make deployment-status DEPLOYMENT=ID
 make stack-merge STACK=STACK_NUMBER
 ```
 
-Deployment mode runs real cheap checks on every PR. Expensive HTTP E2E runs once on explicit request. The deployment is simulated on an ephemeral runner; the HTTP assertions are real. A separate API-only workflow posts success after the E2E source workflow has completed successfully and the stack still matches. Failed or canceled tests cannot report a successful deployment. Keep the rule active for the merge proof.
+Deployment mode runs real cheap checks on every PR. Expensive HTTP E2E runs once on explicit request. The deployment is simulated on an ephemeral runner; the HTTP assertions are real. A separate API-only workflow posts success after the E2E source workflow has completed successfully and the stack still matches. Failed or canceled tests cannot report a successful deployment. The rule remained active during every merge attempt. Do not treat this as a proven stack-wide merge solution.
 
 ## Merge protection and security
 
