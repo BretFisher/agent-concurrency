@@ -34,3 +34,12 @@ DRY_RUN ?= true
 stack-cancel:
 	@test -n "$(RUN_ID)" || (echo 'Use make stack-cancel RUN_ID=<top-workflow-run-id>'; exit 1)
 	GITHUB_REPOSITORY="$(REPO)" GITHUB_RUN_ID="$(RUN_ID)" STACK_CANCEL_DRY_RUN="$(DRY_RUN)" bash scripts/cancel-lower-stack-runs.sh
+
+.PHONY: stack-probe-delay stack-cleanup-enable stack-cleanup-disable
+PROBE_SECONDS ?= 0
+stack-probe-delay:
+	gh variable set STACK_PROBE_SECONDS --body "$(PROBE_SECONDS)"
+stack-cleanup-enable:
+	gh variable set STACK_CLEANUP_ENABLED --body true
+stack-cleanup-disable:
+	gh variable set STACK_CLEANUP_ENABLED --body false

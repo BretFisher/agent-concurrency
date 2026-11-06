@@ -43,7 +43,10 @@ jobs:
     permissions: {}
     steps:
       - name: Simulate Active Validation
+        env:
+          PROBE_SECONDS: ${{ vars.STACK_PROBE_SECONDS || '0' }}
         run: |
           set -euo pipefail
           echo 'This is a scheduling probe, not an application correctness test.'
-          sleep 90
+          [[ "$PROBE_SECONDS" =~ ^[0-9]{1,3}$ ]] && ((PROBE_SECONDS <= 180))
+          sleep "$PROBE_SECONDS"

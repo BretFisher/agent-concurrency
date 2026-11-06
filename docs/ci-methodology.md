@@ -1,144 +1,94 @@
-# First-party CI concurrency methods
+# CI concurrency implementation guide
 
-This guide adapts concepts from the [four-project source study](ci-source-study.md). It adds no action, service, compiler, cleanup implementation, or merge-policy change. The pseudocode is a design for review, not runnable code or a tested feature.
-
-## Problem and scope
-
-When an agent creates PRs and commits faster than validation finishes, obsolete runs can consume runner time for lint, unit tests, integration tests, E2E, CVE scans, and repeated setup. This can happen with ordinary branches or PRs. Stacks add more cumulative revisions and events.
-
-The cost objective is to stop obsolete long-running validation promptly. A brief overlap can be acceptable. Zero job starts and a guaranteed cancellation time are different requirements; neither is promised here. No measured industry-wide cost trend is assumed.
-
-GitHub cancellation targets a **workflow run**, which contains job runs. Canceling its workflow run can stop all its validation jobs together. If validation spans several workflows, each selected workflow needs its own desired current run. Keeping one arbitrary run across the repository would discard required work. See [workflow-run API](https://docs.github.com/en/rest/actions/workflow-runs).
+This guide separates three tested mechanisms. [Stack workflow test findings](stack-tests.md) contains the exact live evidence. [The source study](ci-source-study.md) explains the earlier implementation comparisons.
 
 ## Level 1: new commits within one branch or PR
 
-The approved goal is: **Cancel obsolete job runs for new commits within one branch or PR.**
-
-Use native concurrency first. This example shows a PR trigger with a baseline that also works for branch or tag refs; it is not a new executable workflow in this repo:
+Purpose: cancel any previously-started, yet still active runs of this workflow on the same branch.
 
 ```yaml
-on:
-  pull_request:
-
-permissions: {}
 # cancel any previously-started, yet still active runs of this workflow on the same branch
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 ```
 
-The stable workflow/ref key groups old and new commits on the same ref. Ordinary PR events use `refs/pull/<number>/merge`; pushes and manual dispatches use the branch or tag ref. Different refs stay separate even when no PR-number field exists. A SHA in that key would prevent supersession. The workflow component separates different validation workflows. [GitHub ref context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context). Give the real test jobs only their required read permissions. Use separate groups and deliberate non-canceling policies for releases and state-changing deployments.
+The key stays stable across revisions. Ordinary PR events use a PR merge ref; pushes and dispatches use a branch or tag ref. Different workflows keep different keys. A SHA in the key would prevent supersession. Scheduling order is not an authoritative current-head check. [GitHub concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-Native concurrency operates on scheduling order, not authoritative commit order. A late old event or rerun still needs a startup check against the current branch tip or PR head if exact freshness is required. GitHub documents that queue entry order is not dispatch or commit order. [Concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+## Level 2: prevent jobs on known lower PRs
 
-## Level 2: select the current native stack tip
+Use the [Stack If Probe](../.github/workflows/stack-if-probe.yaml) pattern. Keep your existing trigger types and add `stacked`. Without explicit types, GitHub's default PR activities omit it.
 
-An event condition comparing `stack.position` with `stack.size` is a useful preliminary filter. gh-aw generates such a condition for its default top-only mode. It reads an event snapshot, not continuing truth. Missing metadata does not prove that another PR is unrelated. [Source study](ci-source-study.md#4-gh-aw-compiler-generated-native-stack-filter).
-
-Before starting costly validation, query current PR and stack state. Record repository identity, all member PRs and head SHAs, trunk SHA, current top PR, and its exact head. Verify that lower changes are present in the top's linear history. If a lower PR changed but the top has not been rebased, the old top does not represent the current combined stack. Wait for a consistent state; do not authorize a full-stack merge.
-
-Validate the explicit top head. Use a full-history `git diff BASE...HEAD` from stack trunk to that head for diff-aware checks. A layer's PR changed-files API can omit lower-layer files. Preserve both revision and execution context in the result. [Native stack metadata](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/optimizing-ci-for-stacked-pull-requests)..
-
-The automatic workflow uses workflow/ref concurrency plus a gated stack-wide reusable call. Its job group uses the stack number when membership exists and the event ref otherwise. Its group stays distinct from the workflow group; the called workflow declares no concurrency group. Earlier live tests proved selected supersession cases with the prior PR-number key. The workflow/ref update has static checks only. A run started before native membership still has a different job group. Native concurrency cannot discover that transition or cancel its leftover by itself. A new top may also have been a temporary top long enough to start work. The opt-in workflow retains workflow-and-target-PR concurrency based on required `inputs.pr`. Its validation job retains the stack key with a target-PR fallback. Requests for unrelated target PRs stay separate even when both are dispatched from `main`. An explicit opt-in request can delay work, but automatic triggering remains a valid design choice; it must ensure the desired current run starts without a person remembering a manual step.
-
-## A proposed metadata-only reconciliation algorithm
-
-Use an explicit allowlist of validation workflow identities and an exclusion list. Include every selected validation category, not just E2E. Exclude the cleanup workflow, result reporters, releases, unrelated PRs, and state-changing deployment workflows. Any exception needs its own tested cancellation and cleanup behavior.
-
-Treat events as wake-up hints. Resolve current membership through the API. Use source repository IDs and verified PR association, not a branch-name match alone. A candidate with no reliable association stays untouched.
-
-```text
-on a relevant PR, membership, or selected-run signal:
-    load trusted validation scope and exclusions
-    read all current PRs, complete native membership, heads, trunk, and linearity
-    if identity/membership is unknown or inconsistent:
-        record the reason; retry later; make no guessed cancellations
-
-    for each selected workflow and execution contract:
-        desired target = current standalone head OR current complete stack tip
-        list candidate workflow runs across every verified member
-        paginate and detect API result limits
-        include pre-stack history for those verified PR/branch identities
-        exclude unrelated repositories, events, reporters, and releases
-
-        select at most one equivalent current run for THIS workflow
-        keep other workflow identities separate
-        identify old-head, lower-layer, and duplicate equivalent runs
-
-        before each cancellation:
-            refresh current membership/heads and the candidate's run attempt
-            if scope changed: stop this plan and reconcile again
-            if the candidate is still proven obsolete: request cancellation
-            record API failures and later confirm completion
-
-        if desired work is missing:
-            use the trusted automatic trigger path for that exact target
-            do not confuse dispatching it with merge authorization
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, stacked]
 ```
 
-This is a proposed selection method, not a ready-made safe script. List/query logic can use GitHub REST through existing `gh api`; cancellation uses the first-party workflow-run cancel endpoint. A normal cancellation should precede any bounded force-cancel escalation. Do not force-cancel reporters or cleanup jobs merely to reduce the active-run count. [Cancel and force-cancel APIs](https://docs.github.com/en/rest/actions/workflow-runs).
+On each selected job, combine existing conditions with:
 
-### Preserve one run per validation contract
+```yaml
+if: >-
+  ${{ github.event_name != 'pull_request' ||
+      github.event.pull_request.stack == null ||
+      github.event.pull_request.stack.position == github.event.pull_request.stack.size }}
+```
 
-A contract includes workflow identity, selected variant, event/checkout semantics, expected head and base, and relevant configuration. A workflow may have one matrix inside one run; several workflows may each need a run. Decide explicitly whether two event types are equivalent before deduplicating them.
+An ordinary PR or top PR runs. A known lower PR skips. Non-PR events run. There is no workflow-level `if:`; a condition on a reusable-workflow caller job can cover all its called jobs. A skipped check is not evidence that validation ran.
 
-Reruns keep a run ID and use a new attempt. A partial job rerun also needs explicit coverage and provenance; it does not prove every job ran in that attempt. Creation time or run number alone is not proof of freshness. Select the current target first, then apply a documented deterministic leader rule to equivalent duplicates. Re-read the attempt before acting. An old event must not cancel a new valid head merely because it reached a runner later.
+The CLI pushes branches, creates PRs, then links the native stack. Opening events can therefore omit membership. `github.event` remains the original event data even if a job waits for a runner. An API lookup can already see membership while that event still has `stack: null`.
 
-### Handle the pre-stack transition without guesses
+A `stacked` event creates another run after membership exists. With Level 1, it can supersede the earlier opening run on the same PR ref. The lower replacement skips validation. The top replacement runs. This works for PR runs; initial push runs use different refs and need Level 3 if they should stop. A former-top PR run can also continue after extension if that PR gets no replacement event of its own.
 
-After native membership exists, a cleanup job can inspect earlier runs belonging to those now-verified member PRs, including runs whose concurrency key was standalone. It must confirm identity even when the run's PR array is empty or its branch name is reused.
+I verified `pull_request: stacked` directly in GitHub Actions for both initial creation and extension. The generic Actions reference and installed actionlint schema omitted this activity, but live delivery succeeded. The dedicated [event probe](../.github/workflows/stack-event-probe.yaml) records the evidence. GitHub separately documents the webhook activity in its [stack rollout guide](https://docs.github.com/en/pull-requests/tutorials/roll-out-stacked-prs#5-update-your-programmatic-tooling).
 
-Before membership exists, no algorithm can know that independent-looking PRs will later become one stack. Earlier cross-PR cancellation requires a trusted declared change-group mapping, created and authorized before those runs. Otherwise, keep independent PRs separate until membership is known. Do not infer ownership from timing, common branch prefixes, shared authors, or an agent name.
+## Level 3: cancel earlier runs on lower PRs
 
-### Cover late signals and partial failure
+The implemented contract is narrow:
 
-A dedicated cleanup job can run from trusted default-branch code on selected `workflow_run` signals. GitHub says `requested` does not fire for reruns; an `in_progress` observation or another tested reconciliation signal is needed. Verify actual native membership-change event delivery instead of inventing a trigger name. A bounded later scan may recover missed events. The validation startup guard is a second line of protection. [Workflow-run events and trust warning](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
+1. The current run's event is allowed. Defaults are `pull_request,push`.
+2. Its exact source repository, branch, and head identify one current open PR.
+3. That PR is currently the native stack's top PR.
+4. The top contains every current lower head.
+5. Cancel earlier, still-active runs of this same workflow on verified lower member PRs, restricted to allowed candidate events.
 
-Pagination is part of correctness. Both inspected cancellation libraries read only one 100-run page. GitHub also caps some filtered searches at 1,000 results. Partition or narrow a proven scope when required; detect incomplete enumeration and report reduced coverage. Do not claim all obsolete work stopped after reading only the first page. [API limits](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow).
+Otherwise, make no cancellation requests. The script has no validation-skip output. Its job is independent of all validation jobs.
 
-A cleanup job needs a runner too. Saturation can delay it. Cancellation API acceptance does not prove a job stopped. Use bounded retries, timeouts, and later status confirmation. Record observation time, selected target, cancellation request time, completion time, and reason. Measure the overlap; do not promise a one-minute bound from YAML alone.
+Copy the `cancel` job from [Stack Cancel Demo](../.github/workflows/stack-cancel.yaml), with the [Bash script](../scripts/cancel-lower-stack-runs.sh) on your trusted default branch. The demonstration includes a repository-variable enable switch. Change the workflow job's event condition and `STACK_CANCEL_EVENTS` together if you need a different event policy. Changing allowed events does not add workflow triggers by itself.
 
-## Separate permissions and failure policies
+The useful job `if:` filters events. Stack membership and top position are checked through the API inside the step. Do not require event stack metadata here: that would miss the opening-event transition the API check is intended to handle.
 
-| Component | Minimum relevant access | Boundary |
+The script uses the current run's numeric workflow ID. It paginates that workflow's history and treats run number only as evidence of earlier creation. It does not select the current top by timestamps. PR candidates need matching member and repository association. Push candidates also need commit-to-PR association. Missing or ambiguous identity remains untouched.
+
+It rechecks membership and member heads before each request, refreshes the candidate's state and attempt, and handles a run that finishes during cancellation. A changed stack stops further requests. API errors fail the cleanup job instead of silently claiming cancellation.
+
+The cancellation API returns acceptance asynchronously. The script requests all selected cancellations before reporting current outcomes; it does not delay later requests while waiting for the first run. A successful job means requests were accepted. Pending outcomes are explicit. The live proof checks eventual run conclusions separately. No fixed cancellation-time guarantee is made.
+
+## Permissions and trusted code
+
+| Component | Permissions | Execution boundary |
 | --- | --- | --- |
-| Metadata selector | PR read; Actions read; contents read if comparing history | No PR code execution |
-| Canceller | Actions write, plus reads needed for fresh selection | Trusted code only. No PR code, PR-controlled artifacts, or deployment/app secrets. Use only the scoped cancellation token. |
-| Validator | Contents read as needed | PR code can run here; no cancellation/deployment write token |
-| Result/merge reporter | Only the specific reporting permission needed | Verify trusted source, attempt, revision, and final result; never execute PR code |
+| Cancellation job | Actions write; contents read; PR read | One Bash step; no PR checkout or artifact execution |
+| Validation jobs | Only required read access | Run PR code on separate runners |
+| Event-only probe | PR read | Records metadata; performs no cancellation |
 
-Unknown data must not authorize a skip or merge. For a cost-only optimization, running validation is a possible fallback. A required freshness or merge decision must remain pending/failed until its evidence is known. Unknown cancellation scope means leave candidates alone and retry, not cancel broadly. API errors need visible reasons; a successful cleanup job with failed cancellation requests is not proof of savings.
+The cancellation step resolves the default branch to a commit, fetches the script at that commit, then executes it. The workflow has `permissions: {}` at its top level. Permissions are scoped to the job; GitHub has no step-scoped permission grant. The demonstration's validation job has no `needs: cancel` relationship.
 
-## Keep content reuse separate
+The script requires Bash, gh, jq, diff, and core shell tools. The example uses a GitHub-hosted Ubuntu image with these tools. A custom runner must provide them. Do not fetch executable script content from the PR head for the write-capable job.
 
-The Skip Duplicate Actions source illustrates tree matching and path backtracking. A Git tree identifies file content, not the complete execution. Any reuse design must include workflow/test configuration, toolchain and dependency resolution, event/checkout contract, trunk/base, matrix inputs, environment, and relevant external data in its equivalence policy. CVE results may expire as vulnerability data changes even with the same tree.
+## Full-stack validation is required
 
-Require a prior successful result with provenance, not just a concurrent matching tree. An in-progress duplicate can fail. Do not turn its presence into successful merge evidence. A first-parent path walk and a single page of commit file names are not a complete net stack diff. [Inspected reuse algorithm and limits](ci-source-study.md#3-skip-duplicate-actions-content-reuse-is-a-separate-policy).
+Existing and future diff-aware workflow specifications must cover the full net change from the stack's merge target to the top head. Use the current stack base SHA and sufficient history for `git diff BASE...HEAD`. A top PR's individual changed-files list can omit lower-layer files. Verify the effective diff behavior of any third-party lint or test action.
 
-## Automatic triggering and merge enforcement are separate
+Run validation against the complete top content. If a lower PR changed and the top has not been rebased, its content is incomplete; the Bash implementation leaves the lower work running. Its ancestry check is a cancellation safeguard, not proof that every selected validation category actually covers every file.
 
-Automatic selection answers what to run. Cancellation stops obsolete work. Neither proves the current change may merge.
+## Scope and limits
 
-If a policy validates only the complete top, it must separately prevent merging an unvalidated lower subset. Native stacks allow merging a selected PR and its lower prefix; whole-stack-only merging is not GitHub's default. Define and test any such restriction before claiming lower layers need no independent evidence. This guide does not implement it or prescribe blanket per-layer checks. [Native merge scope](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-apis-and-webhooks).
+- Manual `workflow_dispatch` runs neither initiate nor become targets of Level 3 by default. Level 1 has its own workflow/ref behavior and can still cancel a manual run sharing that key.
+- A manual rerun retains its original event type. Dispatch protection does not mean every manually requested rerun is excluded.
+- The implemented job targets its own workflow only. A dedicated cleanup-only workflow triggered by `stacked` would need explicit target workflow IDs and a creation-time boundary suitable for those different workflows. That variant is not implemented here.
+- There is no atomic transaction between reading stack state and requesting cancellation. A later lower-layer run can start after the scan and remain until another top invocation.
+- The proven `stacked` event supplies creation and extension signals. This test does not establish separate removal, reorder, dissolution, or rebase activity types.
+- These mechanisms control scheduling and cancellation. They do not implement whole-stack-only merging or transfer validation results to lower SHAs.
 
-A skipped job can report success without testing. A dispatched workflow does not automatically satisfy PR required status checks. The retired experiment required per-layer cheap checks to isolate deployment behavior. Those branch requirements have been removed and do not define the intended cost policy. Native required-deployment inheritance remains unverified in this repo despite successful active tip deployments. The [README](../README.md#retired-enforcement-experiment) summarizes the failed experiment. Do not copy successful statuses to lower commits to hide a missing validation result.
-
-Merge-queue validation has a different candidate revision and event contract. Keep its concurrency and result identity separate from PR runs. Graphite's hosted once-per-stack queue is not evidence that GitHub's native queue has the same behavior. [Source comparison](ci-source-study.md#1-graphite-public-adapter-hosted-decision).
-
-## Acceptance tests before implementation claims
-
-| Case | Required observation |
-| --- | --- |
-| Branch or standalone PR gets a new commit | Old selected workflow runs stop; latest revision validation completes |
-| A stack grows several minutes apart | Former tips and lower-layer work stop after current membership is observed |
-| Standalone PRs become native members | Their earlier standalone-key runs are found and canceled |
-| Same branch name in another fork or unrelated PR | Its runs remain untouched |
-| Two selected workflows and duplicate current-head runs | One valid run per workflow/contract remains, not one global winner |
-| Old event, rerun attempt, or late scheduling | Current head remains selected; cleanup does not cancel it based on timestamp order |
-| Lower head changes without a rebase | The incomplete top is not certified as the whole current stack |
-| More than 100 runs, a capped query, or API failure | Missing coverage is detected; no guessed scope or false success |
-| Cleanup runner is delayed | Overlap is measured; startup checks still reject obsolete validation |
-| Canceled/failed tests or a new head after success | Merge authorization does not reuse that result |
-| A lower-prefix merge is attempted under a tip-only policy | Explicit policy enforcement rejects it; do not assume native all-stack-only semantics |
-
-These are proposed acceptance tests. Prior live demonstrations covered selected cancellation, diff, and opt-in cases; those observations do not prove this proposed cleanup algorithm. The source review adds no new cleanup behavior or timing guarantee.
+The earlier proposal for repository-wide reconciliation, duplicate-result reuse, and merge enforcement is outside this implementation. This Bash script implements the smaller current-workflow contract above. Run `make stack-cancel-test` for its local scope checks; see the [README command table](../README.md#test-and-use-the-script) for live use.

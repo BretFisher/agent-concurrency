@@ -47,7 +47,10 @@ jobs:
     permissions: {}
     steps:
       - name: Simulate Active Work
+        env:
+          PROBE_SECONDS: ${{ vars.STACK_PROBE_SECONDS || '0' }}
         run: |
           set -euo pipefail
           echo 'Cancellation timing probe only; this delay proves no application behavior.'
-          sleep 120
+          [[ "$PROBE_SECONDS" =~ ^[0-9]{1,3}$ ]] && ((PROBE_SECONDS <= 180))
+          sleep "$PROBE_SECONDS"
