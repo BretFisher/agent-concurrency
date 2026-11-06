@@ -1,1 +1,2 @@
 The handler returns a greeting for the contract name.
+The handler also accepts an empty name.
