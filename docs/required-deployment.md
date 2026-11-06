@@ -1,6 +1,6 @@
 # Require full-stack E2E before merging
 
-A required deployment and a required status check are different GitHub rules. A required status check applies to each PR in a native stack. GitHub documents that a successful deployment for a stack PR also covers lower PRs while the stack has a linear history. This example tests that difference with the `stack-e2e` environment.
+A required deployment and a required status check are different GitHub rules. A required status check applies to each PR in a native stack. GitHub documents that a successful deployment for a stack PR also covers lower PRs while the stack has a linear history. This example tests that difference with the `stack-e2e` environment. **Live result: the expected lower-layer deployment inheritance was not reproduced.** Missing, failed, canceled, and stale evidence blocked merges correctly, but a successful active top deployment still did not permit the native stack merge. Read the evidence before using this as a stack optimization.
 
 This is a **simulated deployment** to an ephemeral Actions runner. The existing test starts a local HTTP server and checks its status, body, and content type. There is no remote service, cloud account, persistent endpoint, or environment secret. The deployment object records the tested revision and its result. This is useful for teaching the merge rule; a real preview deployment would replace the local server setup.
 
@@ -53,7 +53,7 @@ make deployment-status DEPLOYMENT=DEPLOYMENT_ID
 make stack-merge STACK=STACK_NUMBER
 ```
 
-The status target shows the deployment's status history. The deployment record's `sha` must equal the tested top SHA. Lower layers need their cheap checks, but should have no separate `stack-e2e` deployments. Merge the whole native stack through its asynchronous merge command. Do not disable the rule or use bypass to demonstrate success.
+The status target shows the deployment's status history. The deployment record's `sha` must equal the tested top SHA. This demo's ruleset requires its two cheap checks on each layer. The intended inheritance test requires lower layers to have no separate `stack-e2e` deployments. Merge the whole native stack through its asynchronous merge command. Do not disable the rule or use bypass to demonstrate success.
 
 ## How the workflows work
 
@@ -83,6 +83,8 @@ These are expected outcomes until backed by the linked execution evidence. Do no
 
 ## Limits and trust
 
+- Native stacks can merge a selected PR and its lower layers. This rule does not enforce a whole-stack-only merge policy.
+- This API-only example does not use environment approval protection rules. Adding environment reviewers alone does not add an approval step to these jobs.
 - The deployment is simulated. The HTTP assertions are real. There is no claim that an external service was deployed.
 - Dispatching this workflow from a feature branch is rejected. Review changes to the trusted workflows before merging them to `main`.
 - A repository administrator can change rules. A credential with deployment-write permission can create deployment statuses. This rule does not authenticate the contents of a test report against a malicious maintainer. Protect those credentials and workflow files in a production repository.
