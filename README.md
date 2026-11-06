@@ -6,6 +6,13 @@ Small PRs help people review one concern at a time. An agent can create several 
 
 This public teaching repo uses a small Go HTTP service, unit tests, and a real HTTP integration test. The E2E job adds **90 seconds of simulated setup** before its HTTP assertion. The delay exists to make cancellation visible. It does not prove correctness. Each job has a time limit. No cloud resources or deployment are needed.
 
+## Methods and source review
+
+- [First-party implementation guidelines](docs/ci-methodology.md): per-PR cancellation first, then current-state stack selection, scoped cleanup design, and separate merge enforcement.
+- [Four-project source study](docs/ci-source-study.md): exact source revisions, algorithms, tests, licenses, and failure limits. It compares techniques without adding the projects as runtime dependencies.
+
+These documents cover redundant validation across lint, unit, integration, E2E, CVE, and setup work. They propose no new executable cleanup engine and preserve the existing live-test limits.
+
 ## Local checks
 
 Requires Go 1.27 and Make. No module dependencies. Nothing here installs local tools.
@@ -90,7 +97,7 @@ Deployment mode runs real cheap checks on every PR. Expensive HTTP E2E runs once
 
 ## Merge protection and security
 
-The earlier status-check example does not enforce stack-wide E2E. The required-deployment example above adds a separate enforcement rule. GitHub evaluates required checks for every layer. A job skipped by an `if` condition can report success without testing that layer. A canceled check can prevent a layer from merging. The live [required-check experiment](docs/evidence.md#required-check-experiment) confirmed that a passing tip did not satisfy the required unit/build check for lower layers. Do not mark a skipped top-only job as the sole safety check, copy green statuses to lower commits, or assume a dispatched workflow satisfies PR required checks. Retain real cheap per-layer checks when enabling protections. Merge queue runs need their own `merge_group` workflow and concurrency scope; a queue does not promise one build per stack. Merge queues are outside this demo.
+The earlier status-check example does not enforce stack-wide E2E. The required-deployment example above adds a separate enforcement rule. GitHub evaluates required checks for every layer. A job skipped by an `if` condition can report success without testing that layer. A canceled check can prevent a layer from merging. The live [required-check experiment](docs/evidence.md#required-check-experiment) confirmed that a passing tip did not satisfy the required unit/build check for lower layers. Do not mark a skipped top-only job as the sole safety check, copy green statuses to lower commits, or assume a dispatched workflow satisfies PR required checks. The current deployment experiment requires two cheap checks per layer; this is a demo setting, not a general requirement for a future tip-only policy. Such a policy needs separately proven merge enforcement for the exact validated change. Merge queue runs need their own `merge_group` workflow and concurrency scope; a queue does not promise one build per stack. Merge queues are outside this demo.
 
 Workflows start with no permissions. API validation gets PR read permission; test jobs get contents read permission. Test code has no write token. Checkout does not retain credentials. External actions are pinned to release SHAs at least seven days old. Review and update pins regularly. `.poutine.yml` records one scoped exception: the test workflow intentionally executes PR code with read-only access and no secrets. Go caching is disabled because there are no dependencies or `go.sum`; this avoids a cache setup cost in a small example. Job time limits bound failures and the simulated wait. Multi-line shell steps stop on errors and unset values.
 
