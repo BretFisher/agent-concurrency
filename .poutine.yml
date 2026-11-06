@@ -1,0 +1,5 @@
+# Test jobs must execute PR code. They have read-only tokens and no secrets.
+# This exception is limited to the shared test workflow.
+skip:
+  - rule: untrusted_checkout_exec
+    path: .github/workflows/reusable-ci.yaml
