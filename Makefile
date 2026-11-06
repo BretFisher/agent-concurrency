@@ -21,6 +21,6 @@ e2e-request:
 e2e-mode:
 	gh variable set E2E_MODE --body opt-in
 automatic-mode:
-	gh variable delete E2E_MODE
+	gh variable set E2E_MODE --body automatic
 demo-status:
 	gh run list --limit 10
