@@ -4,15 +4,15 @@ This guide adapts concepts from the [four-project source study](ci-source-study.
 
 ## Problem and scope
 
-When an agent creates PRs and commits faster than validation finishes, obsolete runs can consume runner time for lint, unit tests, integration tests, E2E, CVE scans, and repeated setup. This can happen with ordinary PRs. Stacks add more cumulative revisions and events.
+When an agent creates PRs and commits faster than validation finishes, obsolete runs can consume runner time for lint, unit tests, integration tests, E2E, CVE scans, and repeated setup. This can happen with ordinary branches or PRs. Stacks add more cumulative revisions and events.
 
 The cost objective is to stop obsolete long-running validation promptly. A brief overlap can be acceptable. Zero job starts and a guaranteed cancellation time are different requirements; neither is promised here. No measured industry-wide cost trend is assumed.
 
 GitHub cancellation targets a **workflow run**, which contains job runs. Canceling its workflow run can stop all its validation jobs together. If validation spans several workflows, each selected workflow needs its own desired current run. Keeping one arbitrary run across the repository would discard required work. See [workflow-run API](https://docs.github.com/en/rest/actions/workflow-runs).
 
-## Level 1: new commits within one PR
+## Level 1: new commits within one branch or PR
 
-The approved goal is: **Cancel obsolete job runs for new commits within the same PR.**
+The approved goal is: **Cancel obsolete job runs for new commits within one branch or PR.**
 
 Use native concurrency first. This example shows a PR trigger with a baseline that also works for branch or tag refs; it is not a new executable workflow in this repo:
 
@@ -29,7 +29,7 @@ concurrency:
 
 The stable workflow/ref key groups old and new commits on the same ref. Ordinary PR events use `refs/pull/<number>/merge`; pushes and manual dispatches use the branch or tag ref. Different refs stay separate even when no PR-number field exists. A SHA in that key would prevent supersession. The workflow component separates different validation workflows. [GitHub ref context](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context). Give the real test jobs only their required read permissions. Use separate groups and deliberate non-canceling policies for releases and state-changing deployments.
 
-Native concurrency operates on scheduling order, not authoritative commit order. A late old event or rerun still needs a startup check against the current PR head if exact freshness is required. GitHub documents that queue entry order is not dispatch or commit order. [Concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+Native concurrency operates on scheduling order, not authoritative commit order. A late old event or rerun still needs a startup check against the current branch tip or PR head if exact freshness is required. GitHub documents that queue entry order is not dispatch or commit order. [Concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
 ## Level 2: select the current native stack tip
 
@@ -129,7 +129,7 @@ Merge-queue validation has a different candidate revision and event contract. Ke
 
 | Case | Required observation |
 | --- | --- |
-| Standalone PR gets a new commit | Old selected workflow runs stop; latest head validation completes |
+| Branch or standalone PR gets a new commit | Old selected workflow runs stop; latest revision validation completes |
 | A stack grows several minutes apart | Former tips and lower-layer work stop after current membership is observed |
 | Standalone PRs become native members | Their earlier standalone-key runs are found and canceled |
 | Same branch name in another fork or unrelated PR | Its runs remain untouched |

@@ -6,7 +6,7 @@ The cost problem includes lint, unit tests, integration tests, E2E, CVE scans, a
 
 ## Goals
 
-1. Cancel obsolete job runs for new commits within the same PR.
+1. Cancel obsolete job runs for new commits within one branch or PR.
 2. Cancel superseded job runs for all PR commits in the stack except the latest commit on the top PR.
 
 These are design goals. The comparison below separates tested behavior from proposed behavior. GitHub's cancellation API targets a **workflow run**, which contains job runs; canceling that workflow run can stop its jobs together.
@@ -15,13 +15,13 @@ These are design goals. The comparison below separates tested behavior from prop
 
 | Technique | What it does | Main benefit | Main limit | Status in this repo |
 | --- | --- | --- | --- | --- |
-| Native concurrency | Cancels older workflow runs or job runs within a stable group | Simple first step for ordinary PR updates; can stop many validation jobs together | Scheduling order is not current-commit order. A standalone-to-stack key change leaves earlier runs outside the new group. | Per-PR and selected stack-tip supersession tested live |
+| Native concurrency | Cancels older workflow runs or job runs within a stable group | Simple first step for ordinary branch or PR updates; can stop many validation jobs together | Scheduling order is not current-commit order. A standalone-to-stack key change leaves earlier runs outside the new group. | Per-PR and selected stack-tip supersession tested live |
 | Current-state API cleanup | Queries current membership and heads, then cancels proven obsolete runs in selected workflows | Can cover lower layers, old commits, equivalent duplicates, and earlier standalone-key runs once membership is known | Needs explicit scope, pagination, fresh reads, retries, and a runner. Unknown membership must not cause guessed cancellations. | Proposed method; no cleanup engine implemented |
 | Retired required-deployment experiment | Requires successful deployment evidence before merging | Separates merge permission from the decision to start or cancel validation | Does not cancel work. Successful tip deployment did not satisfy the lower layer in this repo's native stack test. | Removed after native stack inheritance was not reproduced |
 
 Automatic and opt-in triggering are separate policy choices. Either can be combined with selection, cancellation, and merge controls.
 
-## Native concurrency: start with one PR
+## Native concurrency: within one branch or PR
 
 Use a stable workflow-and-ref key for validation. A new run in that group requests cancellation of the previous run. Do not put the commit SHA in the group: each commit would then get its own group and avoid supersession.
 
@@ -75,13 +75,13 @@ For the intended tip-only validation mode, the chosen policy is **whole-stack-on
 
 ## Retired enforcement experiment
 
-We tested whether one successful top-PR E2E deployment could satisfy the required deployment for lower PRs in a linear native stack, as [GitHub documents](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests). The exact top commit passed, but the full stack stayed blocked by the lower layer. The experiment did not meet the goal, so its protection, environment, runnable setup, detailed record files, and test branches were removed. It is not recommended as a proven stack-wide solution. This result does not establish a confirmed GitHub bug or universal impossibility.
+I tested whether one successful top-PR E2E deployment could satisfy the required deployment for lower PRs in a linear native stack, as [GitHub documents](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests). The exact top commit passed, but the full stack stayed blocked by the lower layer. The experiment did not meet the goal, so I removed its protection, environment, runnable setup, detailed record files, and test branches. I do not recommend it as a proven stack-wide solution. This result does not establish a confirmed GitHub bug or universal impossibility.
 
 ## What the demo proves
 
 A small Go HTTP application supplies real response assertions. A clearly labeled 90-second setup delay makes selected cancellation cases visible; the delay proves no application behavior.
 
-The workflow/ref grouping update was checked statically; no new live cancellation test was run. Earlier automatic-workflow live tests used the prior PR-number grouping.
+I checked the workflow/ref grouping update statically. I did not run a new live cancellation test. Earlier automatic-workflow live tests used the prior PR-number grouping.
 
 Validation runs with read-only access. Broader metadata cleanup and whole-stack-only merge enforcement remain design work, not hidden features of the current workflows.
 
