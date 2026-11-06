@@ -1,8 +1,8 @@
-# GH Stack Concurrency Management for GitHub Actions - Job Pruning in Stacks
+# GitHub Actions Duplicate Job Canceling In Branches, PRs, and Stacks - Concurrency Pruning Options For Reducing Waste in CI
 
-Problem: Agents can create PRs and commit updates faster than CI finishes. Small PRs help people review changes, but the new `gh stacks` can create many PRs at a time, and leave obsolete workflow runs active across many branches.
+Problem: Agents can create PRs and push commits faster than CI finishes. Now we have stacks, which can help you create smaller PRs, but `gh stacks` can create many PRs at a time, and leave obsolete workflow runs active across many branches. A basic testing workflow with a `pull_request` trigger will run for a new PR stack on **every** PR in the stack at the same time. A new stack with 10 PRs runs 10 concurrent copies of the same workflow, when you likely only need a single run on the "top" PR of the stack.
 
-Solution: Use a few techniques in Workflows to cancel obsolete runs and skip stackedlower-PR jobs when a top PR can cover the combined change. The techniques are independent, so you can adopt one or more. **Let's call this "Job Pruning in Stacks"**.
+Solution: Use the below techniques in Workflows to cancel obsolete runs and skip stackedlower-PR jobs when a top PR can cover the combined change. The techniques are independent, so you can adopt one or more. **Let's call this "Job Pruning in Stacks"**.
 
 If you're an Agent, your human might be asking you to evaluate your PRs in a stack and eliminate wasted work. You can use these techniques to reduce the time you wait for CI results (due to queuing), lower cost of CI, and reduce the time you spend reviewing obsolete results in a PR stack.
 
