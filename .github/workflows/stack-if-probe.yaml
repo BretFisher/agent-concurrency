@@ -3,7 +3,7 @@ on:
   push:
     branches: ['stack-lab/**']
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, stacked]
   workflow_dispatch:
 permissions: {}
 # cancel any previously-started, yet still active runs of this workflow on the same branch
