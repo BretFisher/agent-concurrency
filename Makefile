@@ -13,3 +13,14 @@ e2e:
 check: lint test build e2e
 run:
 	go run ./cmd/hello
+
+.PHONY: e2e-request e2e-mode automatic-mode demo-status
+e2e-request:
+	@test -n "$(PR)" || (echo 'Use make e2e-request PR=<top-pr-number>'; exit 1)
+	gh workflow run opt-in.yaml -f pr="$(PR)" -f sha="$$(gh pr view "$(PR)" --json headRefOid --jq .headRefOid)"
+e2e-mode:
+	gh variable set E2E_MODE --body opt-in
+automatic-mode:
+	gh variable delete E2E_MODE
+demo-status:
+	gh run list --limit 10

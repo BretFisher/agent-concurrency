@@ -43,6 +43,7 @@ jobs:
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: number});
             const s = pr.stack;
             const valid = pr.state === 'open' && pr.head.sha === expected && (!s || s.position === s.size);
+            if (!valid) core.setFailed('Request must match the current open tip and exact SHA.');
             core.setOutput('valid', String(valid));
             core.setOutput('key', s ? `stack-${s.number}` : `pr-${number}`);
             core.setOutput('head', pr.head.sha);

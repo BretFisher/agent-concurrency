@@ -37,15 +37,14 @@ The two scopes have different purposes. The PR key cancels old commits within ea
 Set this repository variable to keep cheap automatic checks and stop automatic E2E starts:
 
 ```sh
-gh variable set E2E_MODE --body opt-in
+make e2e-mode
 ```
 
 After creating or rebasing the full stack, request E2E for its current top and exact SHA:
 
 ```sh
-PR=3 # replace with the current top PR
-SHA=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
-gh workflow run opt-in.yaml -f pr="$PR" -f sha="$SHA"
+make e2e-request PR=5 # replace 5 with the current top PR
+make demo-status
 ```
 
 [Opt In E2E](.github/workflows/opt-in.yaml) rejects stale SHAs and lower layers. New commits or rebases need a new request with the new SHA. A previous manual run is evidence for its recorded SHA only. It is not a required PR check and does not automatically become invalid when a later PR event occurs. Revalidate before merging. Draft status alone does not suppress Actions.
@@ -53,7 +52,7 @@ gh workflow run opt-in.yaml -f pr="$PR" -f sha="$SHA"
 Restore automatic E2E with:
 
 ```sh
-gh variable delete E2E_MODE
+make automatic-mode
 ```
 
 Both modes remain visible for teaching. Use one expensive-job policy in production. Do not run both suites for the same SHA unless comparing them.
@@ -67,7 +66,7 @@ The lint job checks out the exact head with full history. For a native stack it 
 Requires an authenticated `gh` with native `gh stack` support. Use a fork or a disposable teaching repo with Actions enabled. The demo creates public PRs. Run local checks before commits.
 
 1. **Ordinary PR:** create a branch, commit a small documentation change, push, and open a draft PR. Wait until the simulated E2E step starts. Push a second commit. Verify the old run is canceled and the new run passes.
-2. **Native stack:** on `main`, run `gh stack init demo/notes`. Add `docs/demo-notes.md`, commit, and run `gh stack submit --auto`. Then `gh stack add demo/example`, add `docs/demo-example.md`, commit, and submit again. Verify membership with `gh stack view --json` and `gh api repos/{owner}/{repo}/pulls/PR`. Trigger the current top with a new commit. Wait for E2E and push another commit. Verify cancellation and a passing newest run. Trigger a lower-layer event by editing its PR title; verify its suite is skipped. The top run's diff must list both files.
+2. **Native stack:** on `main`, run `gh stack init demo/notes`. Add `docs/demo-notes.md`, commit, and run `gh stack submit --auto`. Then `gh stack add demo/example`, add `docs/demo-example.md`, commit, and submit again. Verify membership with `gh stack view --json` and `gh api repos/{owner}/{repo}/pulls/PR`. Trigger the current top with a new commit. Wait for E2E and push another commit with `gh stack push`. Verify cancellation and a passing newest run. Trigger a lower-layer event by editing its PR title; verify its suite is skipped. The top run's diff must list both files.
 3. **Opt-in:** set `E2E_MODE=opt-in`, push a top commit, and verify automatic E2E is skipped. Dispatch `opt-in.yaml` as above. Verify the HTTP E2E passes. Dispatch an earlier SHA and a lower PR; verify each is rejected before tests start.
 4. Close or merge demo PRs when done. Native `gh stack merge TOP --yes --squash` merges the selected PR and all lower layers. Use `gh stack merge --help` for current flags. Confirm every resulting PR state.
 
@@ -77,13 +76,14 @@ Requires an authenticated `gh` with native `gh stack` support. Use a fork or a d
 
 This repo does not claim protected stack-only merging. GitHub evaluates required checks for every layer. A job skipped by an `if` condition can report success without testing that layer. A canceled check can prevent a layer from merging. Do not mark a skipped top-only job as the sole safety check, copy green statuses to lower commits, or assume a dispatched workflow satisfies PR required checks. Retain real cheap per-layer checks when enabling protections. Merge queue runs need their own `merge_group` workflow and concurrency scope; a queue does not promise one build per stack. Merge queues are outside this demo.
 
-Workflows start with no permissions. API validation gets PR read permission; test jobs get contents read permission. Test code has no write token. Checkout does not retain credentials. External actions are pinned to release SHAs at least seven days old. Review and update pins regularly. Go caching is disabled because there are no dependencies or `go.sum`; this avoids a cache setup cost in a small example. Job time limits bound failures and the simulated wait. Multi-line shell steps stop on errors and unset values.
+Workflows start with no permissions. API validation gets PR read permission; test jobs get contents read permission. Test code has no write token. Checkout does not retain credentials. External actions are pinned to release SHAs at least seven days old. Review and update pins regularly. `.poutine.yml` records one scoped exception: the test workflow intentionally executes PR code with read-only access and no secrets. Go caching is disabled because there are no dependencies or `go.sum`; this avoids a cache setup cost in a small example. Job time limits bound failures and the simulated wait. Multi-line shell steps stop on errors and unset values.
 
 ## Sources
 
 - [GitHub: stack CI metadata and tip conditions](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/optimizing-ci-for-stacked-pull-requests)
 - [GitHub: stack APIs and webhooks](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-apis-and-webhooks)
 - [GitHub: stack merge requirements](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests)
+- [GitHub: required check events and skipped jobs](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
 - [GitHub: concurrency and ordering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
 
 MIT license. See [LICENSE](LICENSE).
