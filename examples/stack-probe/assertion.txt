@@ -1,0 +1,1 @@
+The response assertion checks the greeting produced by the handler.
